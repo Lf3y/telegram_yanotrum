@@ -41,7 +41,8 @@ body {
 }
 
 a { color: inherit; text-decoration: none; }
-button { cursor: pointer; border: none; background: none; font-family: var(--font-body); }
+/* В Telegram Mini App у <button> иначе часто системный чёрный цвет текста */
+button { cursor: pointer; border: none; background: none; font-family: var(--font-body); color: inherit; }
 img { display: block; }
 
 /* Scrollbar */

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
+import { pluralRu } from '../lib/pluralRu';
 
 const STATUS_LABELS = {
   new: { label: 'Новый', color: 'var(--accent2)', bg: 'rgba(var(--accent-rgb), 0.14)' },
@@ -53,7 +54,9 @@ export default function Orders() {
       <div className="header">
         <div>
           <div className="header-title">Мои заказы</div>
-          <div className="header-sub">{orders.length} заказов</div>
+          <div className="header-sub">
+            {orders.length} {pluralRu(orders.length, 'заказ', 'заказа', 'заказов')}
+          </div>
         </div>
       </div>
 
@@ -72,11 +75,23 @@ export default function Orders() {
               <div key={order.id} className="card"
                 style={{ overflow: 'hidden', animation: `fadeUp 0.35s ${i * 0.06}s ease both`, opacity: 0, animationFillMode: 'forwards' }}>
                 {/* Order header */}
-                <button onClick={() => setExpanded(isOpen ? null : order.id)}
-                  style={{ width: '100%', padding: '16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isOpen ? null : order.id)}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    textAlign: 'left',
+                    color: 'var(--text)',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 15 }}>Заказ #{order.id}</span>
+                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>Заказ #{order.id}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: status.bg, color: status.color }}>
                         {status.label}
                       </span>
@@ -84,7 +99,9 @@ export default function Orders() {
                     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{formatDate(order.created_at)}</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 17 }}>{formatByn(order.total)}</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>
+                      {formatByn(order.total)}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{isOpen ? '▲' : '▼'}</div>
                   </div>
                 </button>
@@ -96,9 +113,9 @@ export default function Orders() {
                       {/* Items */}
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Товары</div>
                       {order.items.map((item, j) => (
-                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                          <span style={{ color: 'var(--text2)' }}>{item.name} × {item.qty}</span>
-                          <span style={{ fontWeight: 600 }}>{formatByn(item.price * item.qty)}</span>
+                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14, minWidth: 0 }}>
+                          <span style={{ color: 'var(--text2)', overflowWrap: 'anywhere' }}>{item.name} × {item.qty}</span>
+                          <span style={{ fontWeight: 600, color: 'var(--text)', flexShrink: 0 }}>{formatByn(item.price * item.qty)}</span>
                         </div>
                       ))}
 

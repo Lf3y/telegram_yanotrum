@@ -35,8 +35,8 @@ export default function Home() {
           VAPE<br />
           <span style={{ color: 'var(--accent2)' }}>SHOP</span>
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.5 }}>
-          Лучшие жидкости и одноразки<br/>с доставкой по городу
+        <p style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.55 }}>
+          Рады видеть вас. Цены указаны в BYN.<br />Ниже — как оформить заказ за пару шагов.
         </p>
       </div>
 
@@ -50,12 +50,17 @@ export default function Home() {
           position: 'relative',
           overflow: 'hidden',
         }}>
-          <div style={{ position: 'absolute', right: -10, top: -10, fontSize: 80, opacity: 0.15 }}>⚡</div>
-          <div style={{ fontSize: 12, color: 'var(--accent2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>🔥 Горячее предложение</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Выгодные одноразки</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)' }}>До 9000 затяжек · Бесплатная доставка</div>
-          <Link to="/catalog/disposable" style={{ display: 'inline-flex', marginTop: 14, padding: '8px 16px', background: 'var(--accent)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: 'white' }}>
-            Смотреть →
+          <div style={{ position: 'absolute', right: -10, top: -10, fontSize: 80, opacity: 0.12 }}>🛒</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, marginBottom: 10, color: 'var(--text)' }}>
+            Как заказать
+          </div>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <li>Откройте категорию или весь каталог и нажимайте «+», чтобы добавить товар в корзину.</li>
+            <li>Перейдите в корзину и оформите заказ — укажите комментарий, если нужно.</li>
+            <li>С вами свяжутся в Telegram: подтвердим состав, способ получения и оплату.</li>
+          </ol>
+          <Link to="/catalog" style={{ display: 'inline-flex', marginTop: 16, padding: '10px 18px', background: 'var(--accent)', borderRadius: 10, fontSize: 14, fontWeight: 600, color: 'white' }}>
+            Перейти в каталог →
           </Link>
         </div>
       </div>
@@ -79,12 +84,13 @@ export default function Home() {
         {loading ? (
           <div className="spinner" />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, width: '100%' }}>
             {categories.map((cat, i) => (
               <Link key={cat.id} to={`/catalog/${cat.slug}`}
                 className="card"
                 style={{
                   padding: 0,
+                  minWidth: 0,
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
@@ -102,9 +108,9 @@ export default function Home() {
                     {cat.emoji}
                   </div>
                 )}
-                <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700 }}>{cat.emoji} {cat.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4 }}>{cat.description}</div>
+                <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, color: 'var(--text)', overflowWrap: 'anywhere' }}>{cat.emoji} {cat.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4, overflowWrap: 'anywhere' }}>{cat.description}</div>
                 </div>
               </Link>
             ))}

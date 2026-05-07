@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../store/cart';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
+import { pluralRu } from '../lib/pluralRu';
 
 function ProductCard({ product, onAdd, added }) {
   return (
-    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: 'hidden' }}>
       {product.image_url && (
         <div style={{ height: 96, borderRadius: 12, overflow: 'hidden', background: 'var(--bg4)', border: '1px solid var(--border)' }}>
           <img
@@ -17,16 +18,16 @@ function ProductCard({ product, onAdd, added }) {
           />
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3, overflowWrap: 'anywhere' }}>
             {product.brand}
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, lineHeight: 1.2, marginBottom: 4, color: 'var(--text)', overflowWrap: 'anywhere' }}>
             {product.name}
           </div>
           {product.description && (
-            <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.4 }}>{product.description}</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.4, overflowWrap: 'anywhere' }}>{product.description}</div>
           )}
         </div>
       </div>
@@ -47,7 +48,7 @@ function ProductCard({ product, onAdd, added }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800 }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>
             {formatByn(product.price)}
           </span>
           {product.old_price && (
@@ -155,7 +156,9 @@ export default function Catalog() {
       <div className="header">
         <div>
           <div className="header-title">Каталог</div>
-          <div className="header-sub">{products.length} товаров</div>
+          <div className="header-sub">
+            {products.length} {pluralRu(products.length, 'товар', 'товара', 'товаров')}
+          </div>
         </div>
       </div>
 
@@ -246,9 +249,9 @@ export default function Catalog() {
             <div className="empty-title">Нет товаров</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, width: '100%' }}>
             {products.map((p, i) => (
-              <div key={p.id} style={{ animation: `fadeUp 0.35s ${i * 0.05}s ease both`, opacity: 0, animationFillMode: 'forwards' }}>
+              <div key={p.id} style={{ minWidth: 0, animation: `fadeUp 0.35s ${i * 0.05}s ease both`, opacity: 0, animationFillMode: 'forwards' }}>
                 <ProductCard product={p} onAdd={addToCart} added={added[p.id]} />
               </div>
             ))}
