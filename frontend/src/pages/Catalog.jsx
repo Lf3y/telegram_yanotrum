@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../store/cart';
 import { apiFetch } from '../lib/api';
 
@@ -47,11 +47,11 @@ function ProductCard({ product, onAdd, added }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800 }}>
-            {product.price.toLocaleString('ru')}₽
+            {Number(product.price).toLocaleString('ru')}₽
           </span>
           {product.old_price && (
             <span style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'line-through' }}>
-              {product.old_price.toLocaleString('ru')}₽
+              {Number(product.old_price).toLocaleString('ru')}₽
             </span>
           )}
         </div>
@@ -63,7 +63,7 @@ function ProductCard({ product, onAdd, added }) {
         </div>
         <button
           onClick={() => onAdd(product)}
-          disabled={product.stock_qty === 0}
+          disabled={product.stock_qty === 0 || product.stock_qty === '0'}
           style={{
             width: 36, height: 36,
             borderRadius: 10,
@@ -73,8 +73,8 @@ function ProductCard({ product, onAdd, added }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             transition: 'all 0.2s',
             flexShrink: 0,
-            opacity: product.stock_qty === 0 ? 0.4 : 1,
-            cursor: product.stock_qty === 0 ? 'not-allowed' : 'pointer',
+            opacity: product.stock_qty === 0 || product.stock_qty === '0' ? 0.4 : 1,
+            cursor: product.stock_qty === 0 || product.stock_qty === '0' ? 'not-allowed' : 'pointer',
           }}
         >
           {added ? '✓' : '+'}
@@ -94,11 +94,16 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true);
   const [added, setAdded] = useState({});
   const { dispatch } = useCart();
+  /** Сообщение при сбое API — чаще всего не указан VITE_API_URL на Render */
+  const [loadError, setLoadError] = useState('');
 
   const activeSlug = slug || 'all';
 
   useEffect(() => {
-    apiFetch('/api/categories').then(r => r.json()).then(setCategories);
+    apiFetch('/api/categories')
+      .then(r => r.json())
+      .then(setCategories)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -118,6 +123,7 @@ export default function Catalog() {
 
   useEffect(() => {
     setLoading(true);
+    setLoadError('');
     const qs = new URLSearchParams();
     if (activeSlug !== 'all') qs.set('category', activeSlug);
     if (activeSlug !== 'all' && activeBrand !== 'all') qs.set('brand', activeBrand);
@@ -129,8 +135,9 @@ export default function Catalog() {
         setProducts(Array.isArray(data) ? data : []);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((e) => {
         setProducts([]);
+        setLoadError(String(e.message || 'Не удалось загрузить товары'));
         setLoading(false);
       });
   }, [activeSlug, activeBrand]);
@@ -211,6 +218,25 @@ export default function Catalog() {
 
       {/* Products grid */}
       <div style={{ padding: '16px 20px 0' }}>
+        {loadError && (
+          <div style={{
+            marginBottom: 14,
+            padding: '12px 14px',
+            borderRadius: 12,
+            background: 'rgba(255,45,45,0.08)',
+            border: '1px solid rgba(255,45,45,0.25)',
+            fontSize: 13,
+            lineHeight: 1.45,
+            color: 'var(--text2)',
+          }}>
+            <div style={{ fontWeight: 700, color: 'var(--accent2)', marginBottom: 6 }}>Не загрузилось из API</div>
+            <div>{loadError}</div>
+            <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+              На Render проверь: в Static Site указан <strong>VITE_API_URL</strong> (= URL бэкенда без <code>/api</code>),
+              затем заново выполни <strong>Clear build cache & deploy</strong>. На бэкенде совпадает <strong>FRONTEND_URL</strong> и URL витрины (CORS).
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="spinner" />
         ) : products.length === 0 ? (

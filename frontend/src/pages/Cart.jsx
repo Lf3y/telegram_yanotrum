@@ -36,7 +36,7 @@ export default function Cart() {
         setTimeout(() => navigate('/orders'), 2000);
       }
     } catch (e) {
-      alert('Ошибка при оформлении заказа');
+      alert(e?.message || 'Ошибка при оформлении заказа');
     }
     setLoading(false);
   }

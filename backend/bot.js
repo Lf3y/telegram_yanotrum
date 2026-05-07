@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import db from './db.js';
+import { get, run } from './db.js';
 
 let bot = null;
 
@@ -26,31 +26,35 @@ export function initBot(token, ownerChatId, frontendUrl) {
     });
   });
 
-  // Handle replies from owner to orders
-  bot.on('message', (msg) => {
+  // Ответы владельца на сообщения о заказах — async DB
+  bot.on('message', async (msg) => {
     if (String(msg.chat.id) !== String(ownerChatId)) return;
     if (!msg.reply_to_message) return;
 
-    // Extract order ID from replied message
     const text = msg.reply_to_message.text || '';
     const match = text.match(/Заказ #(\d+)/);
     if (!match) return;
 
-    const orderId = parseInt(match[1]);
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order) return;
+    const orderId = parseInt(match[1], 10);
+    try {
+      const order = await get('SELECT * FROM orders WHERE id = ?', [orderId]);
+      if (!order) return;
 
-    // Save owner note
-    db.prepare('UPDATE orders SET owner_note = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(msg.text, 'replied', orderId);
+      await run(
+        'UPDATE orders SET owner_note = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [msg.text, 'replied', orderId],
+      );
 
-    // Forward reply to customer
-    bot.sendMessage(order.telegram_user_id,
-      `💬 *Ответ магазина по заказу #${orderId}:*\n\n${msg.text}`,
-      { parse_mode: 'Markdown' }
-    );
+      await bot.sendMessage(
+        order.telegram_user_id,
+        `💬 *Ответ магазина по заказу #${orderId}:*\n\n${msg.text}`,
+        { parse_mode: 'Markdown' }
+      );
 
-    bot.sendMessage(ownerChatId, `✅ Ответ отправлен клиенту (заказ #${orderId})`);
+      await bot.sendMessage(ownerChatId, `✅ Ответ отправлен клиенту (заказ #${orderId})`);
+    } catch (e) {
+      console.error('bot reply handling:', e?.message || e);
+    }
   });
 
   console.log('🤖 Telegram bot started');

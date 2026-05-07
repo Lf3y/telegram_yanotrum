@@ -160,10 +160,21 @@ Invoke-RestMethod -Method Post "http://localhost:3001/api/admin/products" `
   -Body '{"category_id":1,"brand_id":1,"name":"Mango Ice","price":650,"volume":"60ml","nicotine":"3мг","image_url":null,"in_stock":1,"sort_order":1}'
 ```
 
-### Важно про Render
+### Важно про Render и база данных
 
-На бесплатном Render файловая система у Web Service **не постоянная** — `shop.db` может сбрасываться после перезапуска/деплоя.
-Для серьёзного продакшена лучше перейти на нормальную БД (Postgres) или отдельное хранилище.
+На бесплатном Render файловая система у Web Service **не постоянная** — без внешней БД `shop.db` может сбрасываться.
+
+**Рекомендуется:** подключить **PostgreSQL на Render**:
+
+1. **New → PostgreSQL** → создай инстанс, дождись **Available**.
+2. Скопируй **Internal Database URL** (для приложения на Render в том же регионе удобнее internal).
+3. В **Web Service** (backend) → **Environment** → добавь переменную **`DATABASE_URL`** = скопированный URL (или **Link PostgreSQL**: Render сам подставит `DATABASE_URL` в связанный Web Service).
+
+После деплоя бэкенд увидит `DATABASE_URL` и переключится на **Postgres** (та же схема таблиц, при пустых таблицах один раз добавится demo seed как у SQLite).
+
+Если **`DATABASE_URL` не задан** — как раньше используется **SQLite** через `sql.js` и файл `backend/shop.db` (удобно локально).
+
+Переменная **`DATABASE_SSL=false`** отключает TLS для `pg` (например, локальный Postgres без SSL).
 
 ---
 
@@ -218,8 +229,8 @@ npm run dev
 
 1. **Web Service (бэкенд)** — Root `backend`, Build `npm install`, Start `node server.js`.  
 2. **Static Site (витрина)** — Root `frontend`, Build `npm install && npm run build`, Publish `dist`.  
-3. В **Environment** бэкенда задай: `BOT_TOKEN`, `OWNER_CHAT_ID`, `FRONTEND_URL` (URL static site `https://…onrender.com`), `ADMIN_TOKEN` (секрет), опционально `ADMIN_URL` = URL админки если будешь хостить её отдельно.  
-4. В **Environment** static site: `VITE_API_URL` = `https://<твой-бэкенд>.onrender.com` (без хвоста `/api`).  
+3. В **Environment** бэкенда задай: `BOT_TOKEN`, `OWNER_CHAT_ID`, `FRONTEND_URL` (URL static site `https://…onrender.com`), `ADMIN_TOKEN` (секрет), **`DATABASE_URL`** (PostgreSQL из шага Postgres выше или через Link), опционально `ADMIN_URL` = URL админки если будешь хостить её отдельно.  
+4. В **Environment** static site: **`VITE_API_URL`** = `https://<твой-бэкенд>.onrender.com` (без хвоста `/api`). После сохранения сделай **Clear build cache & deploy** у Static Site — иначе витрина без этой переменной при сборке будет стучаться «в себя» и каталог останется пустым (в браузере/консоли будет предупреждение `[VapeShop]`).  
 5. В **@BotFather** → **Menu button** / команда **/start** с **Web App** → URL = URL витрины (static).  
 6. Перезапусти бэкенд после правки env.  
 

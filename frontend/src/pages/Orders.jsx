@@ -19,15 +19,33 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
+    setLoadError('');
     apiFetch(`/api/orders/user/${user.id}`)
       .then(r => r.json())
-      .then(data => { setOrders(data); setLoading(false); });
+      .then(data => {
+        setOrders(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setOrders([]);
+        setLoadError(String(e.message || 'Не удалось загрузить заказы'));
+        setLoading(false);
+      });
   }, [user.id]);
 
   if (loading) return <div className="page"><div className="spinner" /></div>;
 
+  if (loadError) {
+    return (
+      <div className="page">
+        <div className="header"><div className="header-title">Мои заказы</div></div>
+        <div style={{ padding: '20px', fontSize: 14, color: 'var(--text2)' }}>{loadError}</div>
+      </div>
+    );
+  }
   return (
     <div className="page">
       <div className="header">
