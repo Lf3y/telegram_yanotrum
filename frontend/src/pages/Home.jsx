@@ -52,7 +52,7 @@ export default function Home() {
         }}>
           <div style={{ position: 'absolute', right: -10, top: -10, fontSize: 80, opacity: 0.15 }}>⚡</div>
           <div style={{ fontSize: 12, color: 'var(--accent2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>🔥 Горячее предложение</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Одноразки от 1100₽</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Выгодные одноразки</div>
           <div style={{ fontSize: 13, color: 'var(--text2)' }}>До 9000 затяжек · Бесплатная доставка</div>
           <Link to="/catalog/disposable" style={{ display: 'inline-flex', marginTop: 14, padding: '8px 16px', background: 'var(--accent)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: 'white' }}>
             Смотреть →

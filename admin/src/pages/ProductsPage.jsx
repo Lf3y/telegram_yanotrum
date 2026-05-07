@@ -158,7 +158,7 @@ function Row({ p, categories, onSaved, onDelete, isHighlighted }) {
         <div className="kbd" style={{ marginTop: 4 }}>id {p.id}</div>
       </td>
       <td>
-        <input className="input" type="number" value={local.price} onChange={e => setLocal(s => ({ ...s, price: e.target.value }))} style={{ width: 88 }} />
+        <input className="input" type="number" title="Цена в белорусских рублях BYN" value={local.price} onChange={e => setLocal(s => ({ ...s, price: e.target.value }))} style={{ width: 88 }} />
       </td>
       <td>
         <input
@@ -257,7 +257,7 @@ export default function ProductsPage() {
   return (
     <>
       <h1 className="h1">Товары</h1>
-      <p className="muted">Поиск и фильтры дублируются в адресной строке (можно поделиться ссылкой). Остаток: <b>−1</b> = безлимит, <b>0</b> = нет. Ниже можно сменить <b>категорию и бренд</b> — не забудь «Сохранить». Фото — только через загрузку файла в ячейке.</p>
+      <p className="muted">Поиск и фильтры дублируются в адресной строке (можно поделиться ссылкой). Цены храните в <b>BYN</b> (белорусский рубль). Остаток: <b>−1</b> = безлимит, <b>0</b> = нет. Ниже можно сменить <b>категорию и бренд</b> — не забудь «Сохранить». Фото — только через загрузку файла в ячейке.</p>
 
       <div className="form-block" style={{ maxWidth: 900, marginTop: 12 }}>
         <div className="form-grid-2">
@@ -305,7 +305,7 @@ export default function ProductsPage() {
                 <tr>
                   <th>Фото</th>
                   <th>Категория / бренд / название</th>
-                  <th>Цена</th>
+                  <th>Цена (BYN)</th>
                   <th>Остаток</th>
                   <th>Наличие</th>
                   <th />

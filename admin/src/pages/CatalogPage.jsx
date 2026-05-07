@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminFetch, adminUpload } from '../lib/api';
 import ImageUploadField from '../components/ImageUploadField';
+import { formatByn } from '../lib/money';
 
 function slugify(input) {
   return String(input || '')
@@ -580,7 +581,7 @@ export default function CatalogPage() {
                       <tr key={p.id}>
                         <td className="kbd">{p.id}</td>
                         <td style={{ fontWeight: 700 }}>{p.name}</td>
-                        <td>{Number(p.price).toLocaleString('ru')} ₽</td>
+                        <td>{formatByn(p.price)}</td>
                         <td>
                           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                             <button
@@ -635,7 +636,7 @@ export default function CatalogPage() {
                 <input className="input" value={newProd.name} onChange={e => setNewProd(s => ({ ...s, name: e.target.value }))} />
               </div>
               <div className="field">
-                <span className="label">Цена, ₽</span>
+                <span className="label">Цена (BYN)</span>
                 <input className="input" value={newProd.price} onChange={e => setNewProd(s => ({ ...s, price: e.target.value }))} inputMode="decimal" />
               </div>
               <div className="field">

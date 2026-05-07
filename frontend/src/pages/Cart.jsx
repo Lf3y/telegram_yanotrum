@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../store/cart';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
+import { formatByn } from '../lib/money';
 
 export default function Cart() {
   const { cart, dispatch } = useCart();
@@ -96,7 +97,7 @@ export default function Cart() {
                 {item.name}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>
-                {item.price.toLocaleString('ru')}₽ × {item.qty}
+                {formatByn(item.price)} × {item.qty}
               </div>
             </div>
 
@@ -114,7 +115,7 @@ export default function Cart() {
             </div>
 
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 800, flexShrink: 0, minWidth: 60, textAlign: 'right' }}>
-              {(item.price * item.qty).toLocaleString('ru')}₽
+              {formatByn(item.price * item.qty)}
             </div>
           </div>
         ))}
@@ -143,18 +144,18 @@ export default function Cart() {
           {cart.map(item => (
             <div key={item.product_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
               <span>{item.name} × {item.qty}</span>
-              <span>{(item.price * item.qty).toLocaleString('ru')}₽</span>
+              <span>{formatByn(item.price * item.qty)}</span>
             </div>
           ))}
           <div className="divider" style={{ margin: '10px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800 }}>
             <span>Итого</span>
-            <span style={{ color: 'var(--accent2)' }}>{total.toLocaleString('ru')}₽</span>
+            <span style={{ color: 'var(--accent2)' }}>{formatByn(total)}</span>
           </div>
         </div>
 
         <button className="btn btn-primary" onClick={placeOrder} disabled={loading}>
-          {loading ? 'Оформляем...' : `Оформить заказ · ${total.toLocaleString('ru')}₽`}
+          {loading ? 'Оформляем...' : `Оформить заказ · ${formatByn(total)}`}
         </button>
       </div>
     </div>

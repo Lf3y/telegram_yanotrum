@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { adminFetch } from '../lib/api';
+import { formatByn } from '../lib/money';
 
 function money(n) {
-  return `${Number(n || 0).toLocaleString('ru')} ₽`;
+  return formatByn(n);
 }
 
 export default function Dashboard() {

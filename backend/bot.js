@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import TelegramBot from 'node-telegram-bot-api';
+import { formatByn } from './formatMoney.js';
 import { get, run } from './db.js';
 
 let bot = null;
@@ -71,8 +72,7 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
 
       await bot.sendMessage(
         order.telegram_user_id,
-        `💬 *Ответ магазина по заказу #${orderId}:*\n\n${msg.text}`,
-        { parse_mode: 'Markdown' },
+        `Сообщение магазина по заказу #${orderId}:\n\n${msg.text}`,
       );
 
       await bot.sendMessage(ownerChatId, `✅ Ответ отправлен клиенту (заказ #${orderId})`);
@@ -122,25 +122,52 @@ export function notifyOwner(ownerChatId, order, items) {
   if (!bot) return;
   if (!ownerChatId || ownerChatId === 'YOUR_TELEGRAM_ID_HERE') return;
 
-  const itemsList = items.map(i => `  • ${i.name} × ${i.qty} = ${(i.price * i.qty).toLocaleString('ru')}₽`).join('\n');
-  const username = order.telegram_username ? `@${order.telegram_username}` : (order.telegram_first_name || 'Аноним');
+  const uname = order.telegram_username ? String(order.telegram_username).replace(/^@/, '') : '';
+  const itemsList = items
+    .map(i => `  • ${i.name} × ${i.qty} = ${formatByn(i.price * i.qty)}`)
+    .join('\n');
 
-  const text =
-    `🛒 *Новый заказ #${order.id}*\n\n`
-    + `👤 Клиент: ${username} (id: \`${order.telegram_user_id}\`)\n`
-    + `📦 Товары:\n${itemsList}\n\n`
-    + `💰 Итого: *${order.total.toLocaleString('ru')}₽*\n`
-    + (order.customer_note ? `📝 Заметка клиента: ${order.customer_note}\n` : '')
-    + `\n⬆️ *Ответьте на это сообщение* чтобы написать клиенту`;
+  const lines = [
+    `🛒 Новый заказ #${order.id}`,
+    '',
+    'КЛИЕНТ (связь):',
+    order.telegram_first_name ? `Имя: ${order.telegram_first_name}` : null,
+    `Telegram id: ${order.telegram_user_id}`,
+    uname ? `Юзер: @${uname} → чат: https://t.me/${uname}` : 'Юзернейма нет — откройте диалог через Mini App клиента или id выше.',
+    `Быстрое открытие чата в приложении Telegram: tg://user?id=${order.telegram_user_id}`,
+    '',
+    'ТОВАРЫ:',
+    itemsList || '  —',
+    '',
+    `💰 Итого: ${formatByn(order.total)}`,
+    order.customer_note ? `📝 Комментарий клиента: ${order.customer_note}` : null,
+    '',
+    '⬆️ Ответьте на это сообщение в этом чате — текст уйдёт клиенту в Telegram.',
+  ];
 
-  bot.sendMessage(ownerChatId, text, { parse_mode: 'Markdown' });
+  bot.sendMessage(ownerChatId, lines.filter(Boolean).join('\n')).catch(e => console.error('notifyOwner:', e.message));
 }
 
 export function notifyCustomer(telegramUserId, orderId) {
   if (!bot || !telegramUserId) return;
-  bot.sendMessage(
-    telegramUserId,
-    `✅ *Заказ #${orderId} принят!*\n\nМы скоро свяжемся с вами для подтверждения.\nСпасибо, что выбрали нас! 🙏`,
-    { parse_mode: 'Markdown' },
-  );
+  bot
+    .sendMessage(
+      String(telegramUserId),
+      `Заказ №${orderId} принят. Ожидайте сообщение от магазина или ответ здесь.`,
+    )
+    .catch(e => console.error('notifyCustomer:', e.message));
+}
+
+/** Когда владелец меняет статус в админке — сообщение клиенту */
+export function notifyCustomerOrderStatus(telegramUserId, orderId, newStatus) {
+  if (!bot || !telegramUserId) return;
+  let msg = '';
+  if (newStatus === 'cancelled') {
+    msg = `Заказ №${orderId} отменён. Если нужны уточнения — напишите нам здесь или через приложение.`;
+  } else if (newStatus === 'done') {
+    msg = `Заказ №${orderId} выполнен и выдан. Спасибо за покупку.`;
+  } else {
+    return;
+  }
+  bot.sendMessage(String(telegramUserId), msg).catch(e => console.error('notifyCustomerOrderStatus:', e.message));
 }

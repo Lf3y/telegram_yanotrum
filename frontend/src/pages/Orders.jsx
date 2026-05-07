@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
+import { formatByn } from '../lib/money';
 
 const STATUS_LABELS = {
   new: { label: 'Новый', color: 'var(--accent2)', bg: 'rgba(var(--accent-rgb), 0.14)' },
-  replied: { label: 'Ответили', color: 'var(--green)', bg: 'rgba(34,197,94,0.12)' },
-  processing: { label: 'В работе', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-  done: { label: 'Завершён', color: 'var(--text3)', bg: 'var(--bg4)' },
+  replied: { label: 'В работе · ответ', color: 'var(--green)', bg: 'rgba(34,197,94,0.12)' },
+  processing: { label: 'Обрабатывается', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  done: { label: 'Выдан', color: 'var(--green)', bg: 'rgba(34,197,94,0.15)' },
+  cancelled: { label: 'Отменён', color: 'var(--text3)', bg: 'rgba(255,45,45,0.12)' },
 };
 
 function formatDate(str) {
@@ -82,7 +84,7 @@ export default function Orders() {
                     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{formatDate(order.created_at)}</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 17 }}>{order.total.toLocaleString('ru')}₽</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 17 }}>{formatByn(order.total)}</div>
                     <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{isOpen ? '▲' : '▼'}</div>
                   </div>
                 </button>
@@ -96,7 +98,7 @@ export default function Orders() {
                       {order.items.map((item, j) => (
                         <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                           <span style={{ color: 'var(--text2)' }}>{item.name} × {item.qty}</span>
-                          <span style={{ fontWeight: 600 }}>{(item.price * item.qty).toLocaleString('ru')}₽</span>
+                          <span style={{ fontWeight: 600 }}>{formatByn(item.price * item.qty)}</span>
                         </div>
                       ))}
 

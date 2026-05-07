@@ -174,52 +174,8 @@ async function syncPgBrandsFromProductNames() {
 async function initPostgres() {
   pool = new pg.Pool(pgPoolConfig());
   await pool.query(PG_SCHEMA);
-
-  const { rows: [{ c }] } = await pool.query('SELECT COUNT(*)::int AS c FROM categories');
-  if (Number(c) === 0) {
-  const cats = [
-    ['Жидкости', 'liquids', '💧', 'Жидкости для под-систем и дриперов', 1],
-    ['Одноразки', 'disposable', '⚡', 'Одноразовые электронные сигареты', 2],
-    ['Солевой никотин', 'salts', '🧪', 'Солевые жидкости для под-систем', 3],
-    ['Аксессуары', 'accessories', '🔧', 'Картриджи, испарители, аккумуляторы', 4],
-  ];
-  for (const c of cats) {
-    await pool.query(
-      'INSERT INTO categories (name,slug,emoji,description,sort_order) VALUES ($1,$2,$3,$4,$5)',
-      c,
-    );
-  }
-
-  const prods = [
-    [1, 'Mango Ice', 'BLVK', 'Сочный манго со льдом', 650, 800, '60ml', '3мг'],
-    [1, 'Strawberry Milk', 'Nasty Juice', 'Клубника со сливками', 720, null, '60ml', '3мг'],
-    [1, 'Blue Razz Lemonade', 'Twist', 'Голубая малина и лимонад', 680, 750, '60ml', '6мг'],
-    [1, 'Watermelon Chill', 'Dinner Lady', 'Арбуз с прохладой', 750, null, '60ml', '3мг'],
-    [2, 'Elf Bar BC5000', 'Elf Bar', 'До 5000 затяжек, заряжаемая', 1200, 1400, '13ml', '50мг'],
-    [2, 'Lost Mary BM5000', 'Lost Mary', 'Mesh испаритель, яркий вкус', 1350, null, '13ml', '50мг'],
-    [2, 'HQD Cuvie Bar', 'HQD', 'До 7000 затяжек', 1100, 1250, '18ml', '50мг'],
-    [2, 'Vozol Star 9000', 'Vozol', 'Большой объём, долгий ресурс', 1500, null, '20ml', '50мг'],
-    [3, 'Pod Salt Go Mango', 'Pod Salt', 'Солевой никотин манго', 550, null, '30ml', '20мг'],
-    [3, 'Brusko Salt Mint', 'Brusko', 'Свежая мята', 480, 550, '30ml', '20мг'],
-    [3, 'Naked 100 Salt', 'Naked 100', 'Тропический микс', 600, null, '30ml', '35мг'],
-    [4, 'Картридж SMOK Nord 4', 'SMOK', 'Оригинальный картридж', 350, null, null, null],
-    [4, 'Испаритель Vaporesso GTX', 'Vaporesso', '0.3 Ом mesh', 280, 320, null, null],
-    [4, 'Аккумулятор 18650 Samsung', 'Samsung', '3000mAh, 20A', 450, null, null, null],
-  ];
-  for (const p of prods) {
-    await pool.query(
-      `INSERT INTO products (category_id,name,brand,description,price,old_price,volume,nicotine,in_stock)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1)`,
-      p,
-    );
-  }
-
-  console.log('✅ PostgreSQL: добавлен demo seed');
-  } else {
-    console.log('✅ PostgreSQL: категории уже есть — seed пропущен');
-  }
-
   await syncPgBrandsFromProductNames();
+  console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
 }
 
 // ——— SQLite (sql.js) ———
@@ -340,42 +296,7 @@ async function initSqlite() {
     console.log('⚠️  DB migration warning:', e?.message || e);
   }
 
-  const catCount = sqliteGet('SELECT COUNT(*) as c FROM categories');
-  if (!catCount || catCount.c === 0) {
-    const cats = [
-      ['Жидкости', 'liquids', '💧', 'Жидкости для под-систем и дриперов', 1],
-      ['Одноразки', 'disposable', '⚡', 'Одноразовые электронные сигареты', 2],
-      ['Солевой никотин', 'salts', '🧪', 'Солевые жидкости для под-систем', 3],
-      ['Аксессуары', 'accessories', '🔧', 'Картриджи, испарители, аккумуляторы', 4],
-    ];
-    cats.forEach(c =>
-      sqliteDb.run('INSERT INTO categories (name,slug,emoji,description,sort_order) VALUES (?,?,?,?,?)', c),
-    );
-    const prods = [
-      [1, 'Mango Ice', 'BLVK', 'Сочный манго со льдом', 650, 800, '60ml', '3мг'],
-      [1, 'Strawberry Milk', 'Nasty Juice', 'Клубника со сливками', 720, null, '60ml', '3мг'],
-      [1, 'Blue Razz Lemonade', 'Twist', 'Голубая малина и лимонад', 680, 750, '60ml', '6мг'],
-      [1, 'Watermelon Chill', 'Dinner Lady', 'Арбуз с прохладой', 750, null, '60ml', '3мг'],
-      [2, 'Elf Bar BC5000', 'Elf Bar', 'До 5000 затяжек, заряжаемая', 1200, 1400, '13ml', '50мг'],
-      [2, 'Lost Mary BM5000', 'Lost Mary', 'Mesh испаритель, яркий вкус', 1350, null, '13ml', '50мг'],
-      [2, 'HQD Cuvie Bar', 'HQD', 'До 7000 затяжек', 1100, 1250, '18ml', '50мг'],
-      [2, 'Vozol Star 9000', 'Vozol', 'Большой объём, долгий ресурс', 1500, null, '20ml', '50мг'],
-      [3, 'Pod Salt Go Mango', 'Pod Salt', 'Солевой никотин манго', 550, null, '30ml', '20мг'],
-      [3, 'Brusko Salt Mint', 'Brusko', 'Свежая мята', 480, 550, '30ml', '20мг'],
-      [3, 'Naked 100 Salt', 'Naked 100', 'Тропический микс', 600, null, '30ml', '35мг'],
-      [4, 'Картридж SMOK Nord 4', 'SMOK', 'Оригинальный картридж', 350, null, null, null],
-      [4, 'Испаритель Vaporesso GTX', 'Vaporesso', '0.3 Ом mesh', 280, 320, null, null],
-      [4, 'Аккумулятор 18650 Samsung', 'Samsung', '3000mAh, 20A', 450, null, null, null],
-    ];
-    prods.forEach(p =>
-      sqliteDb.run(
-        'INSERT INTO products (category_id,name,brand,description,price,old_price,volume,nicotine,in_stock) VALUES (?,?,?,?,?,?,?,?,1)',
-        p,
-      ),
-    );
-    fs.writeFileSync(DB_PATH, Buffer.from(sqliteDb.export()));
-    console.log('✅ SQLite: добавлен demo seed');
-  }
+  console.log('✅ SQLite: таблицы готовы (категории и товары только через админку)');
 }
 
 /** Вызови один раз до app.listen и initBot после этого */

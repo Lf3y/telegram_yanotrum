@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../store/cart';
 import { apiFetch } from '../lib/api';
+import { formatByn } from '../lib/money';
 
 function ProductCard({ product, onAdd, added }) {
   return (
@@ -47,11 +48,11 @@ function ProductCard({ product, onAdd, added }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800 }}>
-            {Number(product.price).toLocaleString('ru')}₽
+            {formatByn(product.price)}
           </span>
           {product.old_price && (
             <span style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'line-through' }}>
-              {Number(product.old_price).toLocaleString('ru')}₽
+              {formatByn(product.old_price)}
             </span>
           )}
         </div>

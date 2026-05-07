@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDb, all, get, run, dialect } from './db.js';
-import { initBot, notifyOwner, notifyCustomer } from './bot.js';
+import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -438,6 +438,10 @@ app.put('/api/admin/orders/:id', requireAdmin, async (req, res, next) => {
       [nextStatus, nextOwner || null, nextCust || null, id]
     );
     const o = await get('SELECT * FROM orders WHERE id=?', [id]);
+    const prevStatus = String(cur.status || '');
+    if (prevStatus !== String(nextStatus) && cur.telegram_user_id) {
+      notifyCustomerOrderStatus(cur.telegram_user_id, id, nextStatus);
+    }
     res.json({ ...o, items: JSON.parse(o.items) });
   } catch (e) { next(e); }
 });
