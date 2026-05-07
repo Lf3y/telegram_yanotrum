@@ -478,7 +478,7 @@ app.use((err, _req, res, _next) => {
 
 async function main() {
   await initDb();
-  initBot(process.env.BOT_TOKEN, OWNER_CHAT_ID, FRONTEND_URL);
+  initBot(app, process.env.BOT_TOKEN, OWNER_CHAT_ID, FRONTEND_URL);
   app.listen(PORT, () => {
     console.log(`🚀 Backend: http://localhost:${PORT}`);
     console.log(`👑 Owner ID: ${OWNER_CHAT_ID}`);
