@@ -367,6 +367,7 @@ export async function runProductImport(buffer, originalname, { dryRun = false, f
       mappedFields: Object.keys(fieldMap),
     };
   }
+  const categoriesToCreate = new Set();
   const brandsToCreate = new Set();
   const preview = [];
   let inserted = 0;
@@ -482,6 +483,12 @@ export async function runProductImport(buffer, originalname, { dryRun = false, f
         parts.push('stock_qty = ?');
         args.push(parsed._stockQtyResolved);
       }
+      if (parsed._hasImageColumn) {
+        parts.push('image_url = ?');
+        args.push(parsed.image_url ?? null);
+      }
+
+      args.push(prodExisting.id);
 
       await run(`UPDATE products SET ${parts.join(', ')} WHERE id = ?`, args);
       updated += 1;
