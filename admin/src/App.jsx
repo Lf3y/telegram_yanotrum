@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import ProductsPage from './pages/ProductsPage';
 import OrdersPage from './pages/OrdersPage';
 import CatalogPage from './pages/CatalogPage';
+import ImportPage from './pages/ImportPage';
 
 function Guard({ children }) {
   const { token } = loadAuth();
@@ -23,6 +24,14 @@ export default function App() {
           element={(
             <Guard>
               <Dashboard />
+            </Guard>
+          )}
+        />
+        <Route
+          path="/import"
+          element={(
+            <Guard>
+              <ImportPage />
             </Guard>
           )}
         />

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { initDb, all, get, run, dialect } from './db.js';
 import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
 import { transitionOrderStatus } from './orderStatus.js';
+import { runProductImport } from './importProducts.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -62,6 +63,12 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 
+/** Импорт каталога из Excel: только в память, до 25 МБ. */
+const uploadImport = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
 function analyticsOverviewSql() {
   if (dialect === 'pg') {
     return `
@@ -114,6 +121,24 @@ app.post('/api/admin/upload', requireAdmin, upload.single('file'), (req, res) =>
   if (!req.file) return res.status(400).json({ error: 'No file' });
   const url = `${publicBaseUrl(req)}/uploads/${req.file.filename}`;
   res.json({ url, filename: req.file.filename, size: req.file.size });
+});
+
+/** Массовый импорт товаров из Excel/CSV (`importProducts.js`). */
+app.post('/api/admin/import/products', requireAdmin, uploadImport.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer?.length) {
+      return res.status(400).json({ error: 'Приложите файл .xlsx, .xls или .csv в поле «file»' });
+    }
+    const dryRun = req.query.dry_run === '1' || req.query.dry_run === 'true';
+    const force = req.query.force === '1' || req.query.force === 'true';
+    const result = await runProductImport(req.file.buffer, req.file.originalname || 'import.xlsx', {
+      dryRun,
+      force,
+    });
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
 });
 
 app.get('/api/categories', async (_req, res, next) => {

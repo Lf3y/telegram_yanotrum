@@ -45,7 +45,7 @@ function normalizePgRow(row) {
   return o;
 }
 
-function slugify(input) {
+export function slugify(input) {
   return String(input || '')
     .trim()
     .toLowerCase()
@@ -321,4 +321,10 @@ export async function get(sql, params) {
 
 export async function run(sql, params) {
   return dialect === 'pg' ? pgRun(sql, params) : Promise.resolve(sqliteRun(sql, params || []));
+}
+
+/** После массового импорта на Postgres связать brand_id с полем brand (та же логика, что при старте БД). */
+export async function syncBrandsAfterBulkImport() {
+  if (dialect !== 'pg' || !pool) return;
+  await syncPgBrandsFromProductNames();
 }

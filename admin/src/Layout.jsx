@@ -3,6 +3,7 @@ import { clearAuth, loadAuth } from './lib/auth';
 
 const NAV = [
   { to: '/', label: 'Дашборд' },
+  { to: '/import', label: 'Импорт Excel' },
   { to: '/products', label: 'Товары' },
   { to: '/orders', label: 'Заказы' },
   { to: '/catalog', label: 'Витрина' },
