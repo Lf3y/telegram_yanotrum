@@ -69,6 +69,16 @@ const uploadImport = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
+function handleImportMulter(req, res, next) {
+  uploadImport.single('file')(req, res, err => {
+    if (err) {
+      console.error('Multer import:', err?.message || err);
+      return res.status(400).json({ error: String(err.message || err || 'Ошибка загрузки файла') });
+    }
+    next();
+  });
+}
+
 function analyticsOverviewSql() {
   if (dialect === 'pg') {
     return `
@@ -124,7 +134,7 @@ app.post('/api/admin/upload', requireAdmin, upload.single('file'), (req, res) =>
 });
 
 /** Массовый импорт товаров из Excel/CSV (`importProducts.js`). */
-app.post('/api/admin/import/products', requireAdmin, uploadImport.single('file'), async (req, res, next) => {
+app.post('/api/admin/import/products', requireAdmin, handleImportMulter, async (req, res, next) => {
   try {
     if (!req.file?.buffer?.length) {
       return res.status(400).json({ error: 'Приложите файл .xlsx, .xls или .csv в поле «file»' });
@@ -137,7 +147,13 @@ app.post('/api/admin/import/products', requireAdmin, uploadImport.single('file')
     });
     res.json(result);
   } catch (e) {
-    next(e);
+    console.error('POST /api/admin/import/products:', e?.stack || e?.message || e);
+    /** Явное тело ошибки для админки (не голый Internal server error). */
+    res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+      code: e?.code,
+    });
   }
 });
 
@@ -170,11 +186,40 @@ app.put('/api/admin/categories/:id', requireAdmin, async (req, res, next) => {
     const id = Number(req.params.id);
     const current = await get('SELECT * FROM categories WHERE id=?', [id]);
     if (!current) return res.status(404).json({ error: 'Not found' });
-    const nextBody = { ...current, ...(req.body || {}) };
-    await run(
-      'UPDATE categories SET name=?, slug=?, emoji=?, description=?, sort_order=?, image_url=? WHERE id=?',
-      [nextBody.name, nextBody.slug, nextBody.emoji, nextBody.description || null, Number(nextBody.sort_order || 0), nextBody.image_url || null, id]
-    );
+    const merged = { ...current, ...(req.body || {}) };
+    const name = String(merged.name ?? '').trim();
+    const slug = String(merged.slug ?? '').trim();
+    let emoji = String(merged.emoji ?? '').trim() || '🛍';
+    if (emoji.length > 24) emoji = emoji.slice(0, 24);
+    const description =
+      merged.description === undefined || merged.description === null
+        ? null
+        : String(merged.description).trim() || null;
+    let sortOrder = Number(merged.sort_order);
+    if (!Number.isFinite(sortOrder)) sortOrder = 0;
+    const imageUrl =
+      merged.image_url === undefined || merged.image_url === null || merged.image_url === ''
+        ? null
+        : String(merged.image_url).trim();
+
+    if (!name || !slug) {
+      return res.status(400).json({ error: 'Нужны непустые название и slug категории' });
+    }
+
+    try {
+      await run(
+        'UPDATE categories SET name=?, slug=?, emoji=?, description=?, sort_order=?, image_url=? WHERE id=?',
+        [name, slug, emoji, description, sortOrder, imageUrl, id],
+      );
+    } catch (dbErr) {
+      const dupSlug =
+        dbErr?.code === '23505'
+        || (dialect === 'sqlite' && /UNIQUE constraint failed.*categories.slug/i.test(String(dbErr?.message || '')));
+      if (dupSlug) {
+        return res.status(409).json({ error: 'Категория с таким slug уже существует — задайте другой slug' });
+      }
+      throw dbErr;
+    }
     res.json(await get('SELECT * FROM categories WHERE id=?', [id]));
   } catch (e) { next(e); }
 });

@@ -1,5 +1,9 @@
-import * as XLSX from 'xlsx';
+import { createRequire } from 'module';
 import { slugify, get, run, syncBrandsAfterBulkImport } from './db.js';
+
+const requireShim = createRequire(import.meta.url);
+/** CJS-загрузка xlsx надёжнее на проде Node (ESM .mjs на части платформ давал ошибки). */
+const XLSX = requireShim('xlsx');
 
 /** Алиасы заголовков колонок (README — эталонная таблица для Excel). */
 const HEADER_ALIASES = {
@@ -48,17 +52,21 @@ function detectFieldMap(sampleRow) {
   return fm;
 }
 
-function sheetRowsFromBuffer(buffer, originalname) {
-  const wb = XLSX.read(buffer, {
-    type: 'buffer',
-    cellDates: true,
-    raw: false,
-    codepage: 65001,
-  });
-  if (!wb.SheetNames?.length) return [];
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
-  return Array.isArray(rows) ? rows : [];
+function sheetRowsFromBuffer(buffer) {
+  if (buffer == null || (typeof buffer === 'object' && 'length' in buffer && Number(buffer.length) === 0)) {
+    return [];
+  }
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  try {
+    const wb = XLSX.read(buf, { type: 'buffer' });
+    if (!wb.SheetNames?.length) return [];
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    const msg = e?.message || String(e);
+    throw new Error(`Не удалось прочитать Excel/CSV (${msg}). Сохраните файл как .xlsx или CSV UTF-8 из Excel.`);
+  }
 }
 
 function parseNumberPrice(v) {
@@ -285,7 +293,7 @@ async function findExistingProduct(categoryId, itemName, brandTextForMatch) {
 }
 
 export async function runProductImport(buffer, originalname, { dryRun = false, force = false } = {}) {
-  const rows = sheetRowsFromBuffer(buffer, originalname);
+  const rows = sheetRowsFromBuffer(buffer);
   if (!rows.length) {
     return {
       dryRun,

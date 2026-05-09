@@ -266,9 +266,14 @@ export default function CatalogPage() {
                         body: JSON.stringify({
                           name: editingCategory.name?.trim(),
                           slug: (editingCategory.slug || slugify(editingCategory.name)).trim(),
-                          emoji: editingCategory.emoji || '🛍',
+                          emoji: editingCategory.emoji?.trim() || '🛍',
                           description: editingCategory.description?.trim() || null,
-                          sort_order: Number(editingCategory.sort_order || 0),
+                          sort_order: (() => {
+                            const r = editingCategory.sort_order;
+                            if (r === '' || r == null) return 0;
+                            const n = Number(r);
+                            return Number.isFinite(n) ? n : 0;
+                          })(),
                           image_url: editingCategory.image_url?.trim() || null,
                         }),
                       });

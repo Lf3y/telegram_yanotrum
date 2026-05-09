@@ -9,7 +9,7 @@ import Orders from './pages/Orders';
 export default function App() {
   return (
     <CartProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<><Home /><BottomNav /></>} />
           <Route path="/catalog" element={<><Catalog /><BottomNav /></>} />
