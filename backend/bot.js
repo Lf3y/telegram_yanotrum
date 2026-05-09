@@ -2,8 +2,19 @@ import crypto from 'crypto';
 import TelegramBot from 'node-telegram-bot-api';
 import { formatByn } from './formatMoney.js';
 import { get, run } from './db.js';
+import { transitionOrderStatus } from './orderStatus.js';
 
 let bot = null;
+
+/** В группе с OWNER_CHAT_ID укажи OWNER_USER_ID (числовой user id того, кто жмёт кнопки). В личке с ботом не нужно. */
+function canOwnerActOnCallbackQuery(query, ownerChatIdExpected) {
+  const expectedChat = String(ownerChatIdExpected ?? '').trim();
+  const msg = query.message;
+  if (!msg || String(msg.chat?.id ?? '') !== expectedChat) return false;
+  if (msg.chat.type === 'private') return true;
+  const uid = String(process.env.OWNER_USER_ID || '').trim();
+  return Boolean(uid && String(query.from?.id ?? '') === uid);
+}
 
 /**
  * @param {import('express').Express} expressApp — для POST webhook (Render продакшен)
@@ -51,13 +62,82 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
     });
   });
 
+  // Inline-кнопки «Выдан» / «Отменить» под уведомлением о заказе
+  bot.on('callback_query', async (query) => {
+    const data = query.data || '';
+    const match = data.match(/^order:(done|cancel):(\d+)$/);
+    if (!match) return;
+
+    if (!canOwnerActOnCallbackQuery(query, ownerChatId)) {
+      try {
+        await bot.answerCallbackQuery(query.id, { text: 'Доступно только владельцу.' });
+      } catch (_) { /* ignore */ }
+      return;
+    }
+
+    const orderId = parseInt(match[2], 10);
+    const nextStatus = match[1] === 'done' ? 'done' : 'cancelled';
+    const chatId = query.message.chat.id;
+    const messageId = query.message.message_id;
+
+    try {
+      const trans = await transitionOrderStatus(orderId, nextStatus);
+      if (!trans.ok) {
+        const alert = trans.code === 'INSUFFICIENT_STOCK';
+        await bot.answerCallbackQuery(query.id, {
+          text: (trans.message || trans.code || 'Ошибка').slice(0, 200),
+          show_alert: alert,
+        });
+        return;
+      }
+      if (trans.skipped) {
+        await bot.answerCallbackQuery(query.id, {
+          text: nextStatus === 'done' ? 'Уже отмечен выданным' : 'Уже отменён',
+        });
+        return;
+      }
+
+      const row = trans.order;
+      if (row?.telegram_user_id) {
+        notifyCustomerOrderStatus(row.telegram_user_id, orderId, nextStatus);
+      }
+
+      if (nextStatus === 'cancelled') {
+        try {
+          await bot.deleteMessage(chatId, messageId);
+        } catch (_) { /* уже удалено или нет прав */ }
+        await bot.answerCallbackQuery(query.id, { text: `Заказ #${orderId} отменён` });
+        return;
+      }
+
+      const base = query.message.text || '';
+      const suffix = '\n\n✅ Выдано: остатки списаны, клиент уведомлён.';
+      try {
+        await bot.editMessageText(base + suffix, {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: { inline_keyboard: [] },
+        });
+      } catch (_) {
+        /** На части клиентов editMessage падает (длина/HTML) — кнопки можно оставить, статус уже в БД. */
+      }
+      await bot.answerCallbackQuery(query.id, { text: `Заказ #${orderId} выдан` });
+    } catch (e) {
+      console.error('callback_query order:', e?.message || e);
+      try {
+        await bot.answerCallbackQuery(query.id, { text: 'Ошибка сервера' });
+      } catch (_) { /* ignore */ }
+    }
+  });
+
   // Ответы владельца на сообщения о заказах — async DB
   bot.on('message', async (msg) => {
     if (String(msg.chat.id) !== String(ownerChatId)) return;
     if (!msg.reply_to_message) return;
 
     const text = msg.reply_to_message.text || '';
-    const match = text.match(/Заказ #(\d+)/);
+    /** Текст уведомления: «Новый заказ #N» — ловим кириллицу после «Ответить» */
+    const match = text.match(/заказ\s*#\s*(\d+)/i);
     if (!match) return;
 
     const orderId = parseInt(match[1], 10);
@@ -142,10 +222,19 @@ export function notifyOwner(ownerChatId, order, items) {
     `💰 Итого: ${formatByn(order.total)}`,
     order.customer_note ? `📝 Комментарий клиента: ${order.customer_note}` : null,
     '',
-    '⬆️ Ответьте на это сообщение в этом чате — текст уйдёт клиенту в Telegram.',
+    'Ниже — кнопки: «Выдан» (списать остатки, клиенту уведомление) или «Отменить» (удалится это сообщение, заказ останется в истории и админке).',
+    '',
+    '⬆️ Ответьте на это сообщение — текст уйдёт клиенту в Telegram.',
   ];
 
-  bot.sendMessage(ownerChatId, lines.filter(Boolean).join('\n')).catch(e => console.error('notifyOwner:', e.message));
+  bot.sendMessage(ownerChatId, lines.filter(Boolean).join('\n'), {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '✅ Выдан', callback_data: `order:done:${order.id}` },
+        { text: '❌ Отменить', callback_data: `order:cancel:${order.id}` },
+      ]],
+    },
+  }).catch(e => console.error('notifyOwner:', e.message));
 }
 
 export function notifyCustomer(telegramUserId, orderId) {

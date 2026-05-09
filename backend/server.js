@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDb, all, get, run, dialect } from './db.js';
 import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
+import { transitionOrderStatus } from './orderStatus.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,21 +67,21 @@ function analyticsOverviewSql() {
     return `
     SELECT
       (SELECT COUNT(*)::int FROM orders) AS orders_all,
-      (SELECT COALESCE(SUM(total),0) FROM orders) AS revenue_all,
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done') AS revenue_all,
       (SELECT COUNT(*)::int FROM orders WHERE created_at::date = CURRENT_DATE) AS orders_today,
-      (SELECT COALESCE(SUM(total),0) FROM orders WHERE created_at::date = CURRENT_DATE) AS revenue_today,
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done' AND created_at::date = CURRENT_DATE) AS revenue_today,
       (SELECT COUNT(*)::int FROM orders WHERE to_char(created_at, 'YYYY-MM') = to_char(CURRENT_TIMESTAMP, 'YYYY-MM')) AS orders_month,
-      (SELECT COALESCE(SUM(total),0) FROM orders WHERE to_char(created_at, 'YYYY-MM') = to_char(CURRENT_TIMESTAMP, 'YYYY-MM')) AS revenue_month
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done' AND to_char(created_at, 'YYYY-MM') = to_char(CURRENT_TIMESTAMP, 'YYYY-MM')) AS revenue_month
   `;
   }
   return `
     SELECT
       (SELECT COUNT(*) FROM orders) AS orders_all,
-      (SELECT COALESCE(SUM(total),0) FROM orders) AS revenue_all,
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done') AS revenue_all,
       (SELECT COUNT(*) FROM orders WHERE date(created_at) = date('now')) AS orders_today,
-      (SELECT COALESCE(SUM(total),0) FROM orders WHERE date(created_at) = date('now')) AS revenue_today,
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done' AND date(created_at) = date('now')) AS revenue_today,
       (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')) AS orders_month,
-      (SELECT COALESCE(SUM(total),0) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')) AS revenue_month
+      (SELECT COALESCE(SUM(total),0) FROM orders WHERE status = 'done' AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')) AS revenue_month
   `;
 }
 
@@ -89,7 +90,7 @@ function analyticsSeriesSql() {
     return `
     SELECT to_char(created_at, 'YYYY-MM-DD') AS d, COUNT(*)::int AS order_count, COALESCE(SUM(total),0) AS revenue
     FROM orders
-    WHERE created_at >= CURRENT_TIMESTAMP - (?::int * INTERVAL '1 day')
+    WHERE status = 'done' AND created_at >= CURRENT_TIMESTAMP - (?::int * INTERVAL '1 day')
     GROUP BY to_char(created_at, 'YYYY-MM-DD')
     ORDER BY d ASC
   `;
@@ -97,7 +98,7 @@ function analyticsSeriesSql() {
   return `
     SELECT strftime('%Y-%m-%d', created_at) AS d, COUNT(*) AS order_count, COALESCE(SUM(total),0) AS revenue
     FROM orders
-    WHERE created_at >= datetime('now', ?)
+    WHERE status = 'done' AND created_at >= datetime('now', ?)
     GROUP BY strftime('%Y-%m-%d', created_at)
     ORDER BY d ASC
   `;
@@ -359,14 +360,7 @@ app.post('/api/orders', async (req, res, next) => {
       [telegram_user_id, telegram_username || null, telegram_first_name || null, JSON.stringify(enriched), total, customer_note || null]
     );
 
-    for (const item of items) {
-      const product = await get('SELECT * FROM products WHERE id=?', [item.product_id]);
-      const sq = product.stock_qty == null || product.stock_qty === undefined ? -1 : Number(product.stock_qty);
-      if (sq !== -1) {
-        const nextQty = sq - item.qty;
-        await run('UPDATE products SET stock_qty=?, in_stock=? WHERE id=?', [nextQty, nextQty > 0 ? 1 : 0, product.id]);
-      }
-    }
+    /** Остатки списываются только при статусе «выдан» (см. orderStatus.transitionOrderStatus). */
 
     const order = await get('SELECT * FROM orders WHERE id=?', [result.lastInsertRowid]);
     notifyOwner(OWNER_CHAT_ID, order, enriched);
@@ -430,17 +424,31 @@ app.put('/api/admin/orders/:id', requireAdmin, async (req, res, next) => {
     const cur = await get('SELECT * FROM orders WHERE id=?', [id]);
     if (!cur) return res.status(404).json({ error: 'Not found' });
     const { status, owner_note, customer_note } = req.body || {};
-    const nextStatus = status != null ? String(status) : cur.status;
     const nextOwner = owner_note !== undefined ? owner_note : cur.owner_note;
     const nextCust = customer_note !== undefined ? customer_note : cur.customer_note;
+
+    const prevStatus = String(cur.status || '');
+
+    if (status != null && String(status) !== prevStatus) {
+      const trans = await transitionOrderStatus(id, String(status));
+      if (!trans.ok) {
+        if (trans.code === 'INSUFFICIENT_STOCK') {
+          return res.status(400).json({ error: trans.message || 'Недостаточно остатков', code: trans.code });
+        }
+        if (trans.code === 'NOT_FOUND') return res.status(404).json({ error: 'Not found' });
+        return res.status(400).json({ error: trans.message || trans.code || 'Нельзя изменить статус' });
+      }
+    }
+
     await run(
-      'UPDATE orders SET status=?, owner_note=?, customer_note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-      [nextStatus, nextOwner || null, nextCust || null, id]
+      'UPDATE orders SET owner_note=?, customer_note=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+      [nextOwner || null, nextCust || null, id]
     );
     const o = await get('SELECT * FROM orders WHERE id=?', [id]);
-    const prevStatus = String(cur.status || '');
-    if (prevStatus !== String(nextStatus) && cur.telegram_user_id) {
-      notifyCustomerOrderStatus(cur.telegram_user_id, id, nextStatus);
+
+    const newStatusStr = String(o.status || '');
+    if (cur.telegram_user_id && prevStatus !== newStatusStr) {
+      notifyCustomerOrderStatus(cur.telegram_user_id, id, newStatusStr);
     }
     res.json({ ...o, items: JSON.parse(o.items) });
   } catch (e) { next(e); }

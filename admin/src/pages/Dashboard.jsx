@@ -51,12 +51,12 @@ export default function Dashboard() {
         <div className="kpi">
           <div className="kpi-lab">Сегодня (заказы)</div>
           <div className="kpi-val">{o.orders_today ?? 0}</div>
-          <div className="kpi-sub">{money(o.revenue_today)}</div>
+          <div className="kpi-sub">{money(o.revenue_today)} <span style={{ fontWeight: 400 }}>выданные</span></div>
         </div>
         <div className="kpi">
           <div className="kpi-lab">Месяц</div>
           <div className="kpi-val">{o.orders_month ?? 0}</div>
-          <div className="kpi-sub">{money(o.revenue_month)}</div>
+          <div className="kpi-sub">{money(o.revenue_month)} <span style={{ fontWeight: 400 }}>выданные</span></div>
         </div>
         <div className="kpi">
           <div className="kpi-lab">Всего заказов</div>
@@ -66,12 +66,13 @@ export default function Dashboard() {
         <div className="kpi">
           <div className="kpi-lab">Выручка всего</div>
           <div className="kpi-val" style={{ fontSize: 18 }}>{money(o.revenue_all)}</div>
+          <div className="kpi-sub" style={{ fontSize: 11 }}>по статусу «Выдан»</div>
         </div>
       </div>
 
       <div className="card">
         <h3>График выручки (по дням)</h3>
-        <p className="muted" style={{ marginTop: 0 }}>Каждый столбик — сумма заказов за день</p>
+          <p className="muted" style={{ marginTop: 0 }}>Столбцы — сумма только по заказам со статусом «Выдан» (по дате оформления)</p>
         {series.length === 0 ? (
           <p className="muted">Пока нет заказов в выбранном периоде</p>
         ) : (
