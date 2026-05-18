@@ -174,6 +174,12 @@ async function syncPgBrandsFromProductNames() {
 async function initPostgres() {
   pool = new pg.Pool(pgPoolConfig());
   await pool.query(PG_SCHEMA);
+  await pool.query(`
+    INSERT INTO categories (name, slug, emoji, description, sort_order, image_url)
+    SELECT 'Картриджи', 'cartridges', '💨',
+           'Раздел как у жидкостей: сначала бренд или навигация по каталогу категории.', 100, NULL
+    WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'cartridges')
+  `);
   await syncPgBrandsFromProductNames();
   console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
 }
@@ -289,6 +295,12 @@ async function initSqlite() {
       sqliteDb.run('ALTER TABLE products ADD COLUMN stock_qty INTEGER DEFAULT -1');
       sqliteDb.run('UPDATE products SET stock_qty = CASE WHEN in_stock=0 THEN 0 ELSE -1 END');
     }
+
+    sqliteDb.run(`
+      INSERT OR IGNORE INTO categories (name, slug, emoji, description, sort_order)
+      VALUES ('Картриджи', 'cartridges', '💨',
+              'Раздел как у жидкостей: сначала бренд или навигация по каталогу категории.', 100)
+    `);
 
     const data = sqliteDb.export();
     fs.writeFileSync(DB_PATH, Buffer.from(data));

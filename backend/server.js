@@ -5,7 +5,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, all, get, run, dialect } from './db.js';
+import { initDb, all, get, run, dialect, slugify } from './db.js';
 import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
 import { transitionOrderStatus } from './orderStatus.js';
 import { runProductImport } from './importProducts.js';
@@ -372,30 +372,293 @@ function productAvailableSQL(alias) {
   return `${a}in_stock=1 AND (COALESCE(${a}stock_qty,-1) = -1 OR ${a}stock_qty > 0)`;
 }
 
+/** Полная строка позиции для заказов и Telegram: бренд + вкус. */
+function formatOrderLineName(product) {
+  const b = product?.brand ? String(product.brand).trim() : '';
+  const n = product?.name != null ? String(product.name).trim() : '';
+  if (b) return `${b} · ${n}`;
+  return n;
+}
+
+/**
+ * Нормализованное выражение никотина в SQL (distinct / фильтр).
+ * @param {string} alias
+ */
+function sqlNicotineKey(alias = 'p') {
+  const a = alias ? `${alias}.` : '';
+  return dialect === 'pg'
+    ? `NULLIF(TRIM(COALESCE(${a}nicotine::text, '')), '')`
+    : `NULLIF(TRIM(COALESCE(${a}nicotine, '')), '')`;
+}
+
+/** Строковое значение производителя (поле brand в products). */
+function sqlBrandTrim(alias = 'p') {
+  const a = alias ? `${alias}.` : '';
+  return `TRIM(COALESCE(${a}brand, ''))`;
+}
+
+/**
+ * @param {Record<string, string | undefined>} q
+ */
+function parseCatalogFilters(q) {
+  const category = q.category?.trim?.() ? String(q.category).trim() : null;
+  const brandSlugFromTable = q.brand?.trim?.() ? String(q.brand).trim() : null;
+  const producerRaw = q.producer != null ? String(q.producer) : '';
+  /** Точное совпадение с полем `products.brand`; пустая строка не считается producer. */
+  const producerTrim = producerRaw.trim();
+  const producer = producerTrim !== '' ? producerTrim : null;
+  /** Только SKU без указанного бренда (`products.brand` пусто). */
+  const unbranded = q.unbranded === '1' || q.unbranded === 'true';
+  const nicotineRaw = q.nicotine != null ? String(q.nicotine).trim() : '';
+  const nicotine = nicotineRaw !== '' ? nicotineRaw : null;
+  const minP = Number.isFinite(Number(q.min_price)) ? Number(q.min_price) : null;
+  const maxP = Number.isFinite(Number(q.max_price)) ? Number(q.max_price) : null;
+
+  return {
+    category,
+    brandSlugFromTable,
+    nicotine,
+    minPrice: minP,
+    maxPrice: maxP,
+    producer,
+    unbranded,
+  };
+}
+
+/**
+ * Условия по цене / никотину / производителю для каталога.
+ * @param {string} columnAlias Префикс колонки, обычно `p`.
+ * @param {{
+ *   minPrice?: number|null,
+ *   maxPrice?: number|null,
+ *   nicotine?: string|null,
+ *   producer?: string|null,
+ * }} parsed
+ * @param {{ skipProducer?: boolean }} [opts]
+ */
+function catalogExtraFiltersSql(columnAlias, parsed, opts = {}) {
+  const parts = [];
+  const params = [];
+  const nk = sqlNicotineKey(columnAlias);
+  const br = sqlBrandTrim(columnAlias);
+
+  if (parsed.minPrice != null && Number.isFinite(parsed.minPrice)) {
+    parts.push(`${columnAlias}.price >= ?`);
+    params.push(parsed.minPrice);
+  }
+  if (parsed.maxPrice != null && Number.isFinite(parsed.maxPrice)) {
+    parts.push(`${columnAlias}.price <= ?`);
+    params.push(parsed.maxPrice);
+  }
+  if (parsed.nicotine != null) {
+    parts.push(`${nk} = ?`);
+    params.push(parsed.nicotine);
+  }
+  if (parsed.unbranded && !opts.skipProducer) {
+    parts.push(`${br} = ''`);
+  } else if (!opts.skipProducer && parsed.producer != null) {
+    parts.push(`${br} = ?`);
+    params.push(parsed.producer);
+  }
+
+  const sql = parts.length ? ` AND ${parts.join(' AND ')}` : '';
+  return { sql, params };
+}
+
+app.get('/api/catalog/brand-groups', async (req, res, next) => {
+  try {
+    const parsed = parseCatalogFilters(req.query);
+    const avail = productAvailableSQL('p');
+    const { sql: ex, params: exParams } = catalogExtraFiltersSql('p', parsed, {
+      skipProducer: true,
+    });
+
+    let sqlText;
+    let paramsOut;
+
+    if (parsed.category) {
+      sqlText = `
+      SELECT TRIM(COALESCE(p.brand,'')) AS brand_raw, COUNT(*) AS cnt
+      FROM products p
+      JOIN categories c ON p.category_id = c.id
+      WHERE c.slug = ? AND ${avail}${ex}
+      GROUP BY TRIM(COALESCE(p.brand,''))`;
+      if (dialect === 'pg') {
+        sqlText += ` ORDER BY cnt DESC NULLS LAST, TRIM(COALESCE(p.brand,'')) ASC`;
+      } else {
+        sqlText += ` ORDER BY cnt DESC, TRIM(COALESCE(p.brand,'')) COLLATE NOCASE ASC`;
+      }
+      paramsOut = [parsed.category, ...exParams];
+    } else {
+      sqlText = `
+      SELECT TRIM(COALESCE(p.brand,'')) AS brand_raw, COUNT(*) AS cnt
+      FROM products p
+      WHERE ${avail}${ex}
+      GROUP BY TRIM(COALESCE(p.brand,''))`;
+      if (dialect === 'pg') {
+        sqlText += ` ORDER BY cnt DESC NULLS LAST, TRIM(COALESCE(p.brand,'')) ASC`;
+      } else {
+        sqlText += ` ORDER BY cnt DESC, TRIM(COALESCE(p.brand,'')) COLLATE NOCASE ASC`;
+      }
+      paramsOut = [...exParams];
+    }
+
+    const rows = await all(sqlText, paramsOut);
+
+    const data = rows.map((r) => {
+      const key = String(r.brand_raw || '').trim();
+      return {
+        brand: key || null,
+        slug: slugify(key || '__no_brand__'),
+        count: Number(r.cnt) || 0,
+      };
+    });
+
+    /** Пустые бренды в конце, «осмысленные» сверху. */
+    data.sort((a, b) => {
+      const az = !a.brand ? 1 : 0;
+      const bz = !b.brand ? 1 : 0;
+      if (az !== bz) return az - bz;
+      return b.count - a.count;
+    });
+
+    res.json(data);
+  } catch (e) {
+    console.error('/api/catalog/brand-groups', e?.message || e);
+    next(e);
+  }
+});
+
+app.get('/api/products/filter-meta', async (req, res, next) => {
+  try {
+    const parsed = parseCatalogFilters(req.query);
+    const avail = productAvailableSQL('p');
+    const nk = sqlNicotineKey('p');
+    /** Метаданные без привязки к конкретному производителю (полный список для фильтра). */
+    const { sql: ex, params: exParams } = catalogExtraFiltersSql('p', parsed, {
+      skipProducer: true,
+    });
+
+    const joinCatSql = parsed.category ? 'JOIN categories c ON p.category_id = c.id' : '';
+    const whereCatSql = parsed.category ? ' AND c.slug = ?' : '';
+    const baseParams = parsed.category ? [parsed.category, ...exParams] : [...exParams];
+
+    const priceRows = await all(
+      `
+      SELECT MIN(p.price) AS mn, MAX(p.price) AS mx FROM products p
+      ${joinCatSql}
+      WHERE ${avail}${whereCatSql}${ex}`,
+      baseParams,
+    );
+
+    let mn = Number(priceRows[0]?.mn);
+    let mx = Number(priceRows[0]?.mx);
+
+    /** Для некорректных «пустых» выборок — нули без NaN */
+    const priceMinOverall = Number.isFinite(mn) ? mn : 0;
+    const priceMaxOverall = Number.isFinite(mx) ? mx : 0;
+
+    const nicRows = await all(
+      `
+      SELECT DISTINCT ${nk} AS nk
+      FROM products p
+      ${joinCatSql}
+      WHERE ${avail}${whereCatSql}${ex}
+        AND ${nk} IS NOT NULL AND ${nk} <> ''
+      ORDER BY nk ASC`,
+      baseParams,
+    );
+
+    const nicotineValues = nicRows
+      .map((r) => String(r.nk || '').trim())
+      .filter(Boolean);
+
+    const brandRows = await all(
+      `
+      SELECT DISTINCT TRIM(COALESCE(p.brand,'')) AS bn FROM products p
+      ${joinCatSql}
+      WHERE ${avail}${whereCatSql}${ex}
+        AND TRIM(COALESCE(p.brand,'')) <> ''
+      ORDER BY bn ASC`,
+      baseParams,
+    );
+
+    const manufacturers = brandRows
+      .map((row) => {
+        const nm = String(row.bn || '').trim();
+        return { name: nm, slug: slugify(nm) };
+      })
+      .filter((row) => row.name);
+
+    res.json({
+      priceMin: priceMinOverall,
+      priceMax: priceMaxOverall,
+      nicotineValues,
+      manufacturers,
+    });
+  } catch (e) {
+    console.error('/api/products/filter-meta', e?.stack || e?.message || e);
+    next(e);
+  }
+});
+
 app.get('/api/products', async (req, res, next) => {
   try {
-    const { category, brand } = req.query;
+    const parsed = parseCatalogFilters(req.query);
+    const avail = productAvailableSQL('p');
 
-    if (!category) {
-      return res.json(await all(`SELECT * FROM products WHERE ${productAvailableSQL('')} ORDER BY sort_order,name`));
-    }
+    /** Внутри категории + slug строки таблицы `brands` (пилюли брендов). */
+    const useBrandJoin = parsed.category && parsed.brandSlugFromTable;
 
-    if (brand) {
-      return res.json(await all(
+    /** Здесь `producer` уже не смешиваем с slug из brands — пилюля имеет приоритет на JOIN. */
+    const extraParsed = useBrandJoin
+      ? {
+        ...parsed,
+        producer:
+          parsed.brandSlugFromTable != null ? null : parsed.producer,
+      }
+      : parsed;
+
+    let { sql: extraSql, params: extraParams } = catalogExtraFiltersSql(
+      'p',
+      extraParsed,
+      {},
+    );
+
+    let rows;
+
+    if (parsed.category && parsed.brandSlugFromTable) {
+      rows = await all(
         `SELECT p.* FROM products p
          JOIN categories c ON p.category_id=c.id
-         JOIN brands b ON b.id = p.brand_id
-         WHERE c.slug=? AND b.slug=? AND ${productAvailableSQL('p')}
-         ORDER BY p.sort_order,p.name`,
-        [category, brand]
-      ));
+         JOIN brands b ON b.id=p.brand_id
+         WHERE c.slug=? AND b.slug=? AND ${avail}${extraSql}
+         ORDER BY p.sort_order, p.name`,
+        [parsed.category, parsed.brandSlugFromTable, ...extraParams],
+      );
+      return res.json(rows);
     }
 
-    return res.json(await all(
-      `SELECT p.* FROM products p JOIN categories c ON p.category_id=c.id WHERE c.slug=? AND ${productAvailableSQL('p')} ORDER BY p.sort_order,p.name`,
-      [category]
-    ));
-  } catch (e) { next(e); }
+    if (parsed.category) {
+      rows = await all(
+        `SELECT p.* FROM products p
+         JOIN categories c ON p.category_id=c.id
+         WHERE c.slug=? AND ${avail}${extraSql}
+         ORDER BY p.sort_order, p.name`,
+        [parsed.category, ...extraParams],
+      );
+      return res.json(rows);
+    }
+
+    rows = await all(
+      `SELECT p.* FROM products p WHERE ${avail}${extraSql} ORDER BY p.sort_order, p.name`,
+      extraParams,
+    );
+    return res.json(rows);
+  } catch (e) {
+    console.error('/api/products', e?.stack || e?.message || e);
+    next(e);
+  }
 });
 
 app.post('/api/orders', async (req, res, next) => {
@@ -412,17 +675,25 @@ app.post('/api/orders', async (req, res, next) => {
       const product = await get('SELECT * FROM products WHERE id=?', [item.product_id]);
       if (!product) return res.status(400).json({ error: `Product ${item.product_id} not found` });
       const sq = product.stock_qty == null || product.stock_qty === undefined ? -1 : Number(product.stock_qty);
+      const lineLabel = formatOrderLineName(product);
       if (sq !== -1) {
         if (item.qty > sq) {
-          return res.status(400).json({ error: `Недостаточно остатка: ${product.name} (доступно ${sq})` });
+          return res.status(400).json({ error: `Недостаточно остатка: ${lineLabel} (доступно ${sq})` });
         }
       } else {
         if (!product.in_stock) {
-          return res.status(400).json({ error: `Товар недоступен: ${product.name}` });
+          return res.status(400).json({ error: `Товар недоступен: ${lineLabel}` });
         }
       }
       total += product.price * item.qty;
-      enriched.push({ ...item, name: product.name, price: product.price });
+      enriched.push({
+        ...item,
+        name: lineLabel,
+        /** Удобство для экспорта / отладки; в UI исторически уже используется `name`. */
+        product_name: product.name,
+        brand: product.brand || null,
+        price: product.price,
+      });
     }
 
     const result = await run(

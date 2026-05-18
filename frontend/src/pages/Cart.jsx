@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCart } from '../store/cart';
+import { useCart, cartLineTitle } from '../store/cart';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
@@ -26,9 +26,12 @@ export default function Cart() {
           telegram_user_id: String(user.id),
           telegram_username: user.username || null,
           telegram_first_name: user.first_name || null,
-          items: cart.map(i => ({ product_id: i.product_id, qty: i.qty })),
+          items: cart.map((i) => ({
+            product_id: i.product_id,
+            qty: i.qty,
+          })),
           customer_note: note || null,
-        })
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -94,7 +97,7 @@ export default function Cart() {
               animation: `fadeUp 0.3s ${i * 0.05}s ease both`, opacity: 0, animationFillMode: 'forwards' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {item.name}
+                {cartLineTitle(item)}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>
                 {formatByn(item.price)} × {item.qty}
@@ -103,13 +106,42 @@ export default function Cart() {
 
             {/* Qty controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <button onClick={() => dispatch({ type: 'DEC', product_id: item.product_id })}
-                style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg4)', color: 'var(--text)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" onClick={() => dispatch({ type: 'DEC', product_id: item.product_id })}
+                className="touch-target-min"
+                style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--bg4)', color: 'var(--text)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation', border: '1px solid var(--border)', flexShrink: 0 }}>
                 −
               </button>
-              <span style={{ fontSize: 16, fontWeight: 700, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-              <button onClick={() => dispatch({ type: 'ADD', item })}
-                style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent)', color: 'white', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{item.qty}</span>
+              <button
+                type="button"
+                disabled={(() => {
+                  const cap = Number(item.stock_qty);
+                  if (cap < 0 || !Number.isFinite(cap)) return false;
+                  return item.qty >= cap;
+                })()}
+                onClick={() =>
+                  dispatch({
+                    type: 'ADD',
+                    item,
+                  })}
+                className="touch-target-min"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: 'var(--accent)',
+                  color: 'white',
+                  fontSize: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  touchAction: 'manipulation',
+                  flexShrink: 0,
+                  opacity: (Number(item.stock_qty) >= 0 && Number.isFinite(Number(item.stock_qty)) && item.qty >= Number(item.stock_qty))
+                    ? 0.38
+                    : 1,
+                }}
+              >
                 +
               </button>
             </div>
@@ -143,7 +175,7 @@ export default function Cart() {
         <div className="card" style={{ padding: '16px', marginBottom: 12 }}>
           {cart.map(item => (
             <div key={item.product_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
-              <span>{item.name} × {item.qty}</span>
+              <span>{cartLineTitle(item)} × {item.qty}</span>
               <span>{formatByn(item.price * item.qty)}</span>
             </div>
           ))}

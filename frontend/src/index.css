@@ -29,14 +29,17 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  min-height: var(--viewport-stable-height, 100vh);
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 #root {
   max-width: 430px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: var(--viewport-stable-height, 100vh);
   position: relative;
 }
 
@@ -75,6 +78,8 @@ img { display: block; }
   transform: translateX(-50%);
   width: 100%;
   max-width: 430px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--safe-bottom, env(safe-area-inset-bottom, 0px));
   background: rgba(17,17,20,0.9);
   backdrop-filter: blur(20px);
   border-top: 1px solid var(--border);
@@ -114,13 +119,15 @@ img { display: block; }
 
 /* Page wrapper */
 .page {
-  padding: 0 0 80px;
+  padding: 12px 0 calc(72px + env(safe-area-inset-bottom, 12px));
+  padding-bottom: calc(72px + var(--safe-bottom, env(safe-area-inset-bottom, 12px)));
   min-height: 100vh;
+  min-height: var(--viewport-stable-height, 100vh);
 }
 
 /* Header */
 .header {
-  padding: 20px 20px 16px;
+  padding: 12px 20px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -144,7 +151,13 @@ img { display: block; }
   border-radius: var(--radius);
   transition: border-color 0.2s, transform 0.15s;
 }
-.card:active { transform: scale(0.98); }
+.card.catalog-card-shell:active { transform: none; }
+
+/* Интерактивные элементы минимальной зоны нажатия ~44 CSS px */
+.touch-target-min {
+  min-width: 44px;
+  min-height: 44px;
+}
 
 /* Pill badge */
 .badge {
