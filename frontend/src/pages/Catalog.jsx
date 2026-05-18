@@ -12,7 +12,8 @@ import { formatByn } from '../lib/money';
  * brandSlugFromPills?: string|null,
  * narrowProducer?: string|null,
  * unbrandedNarrow?: boolean,
- * forceFlatAll?: boolean,
+ * forceFlatBrowse?: boolean,
+ * useTieredBrandBrowse?: boolean,
  * filters: {
  *minPrice?: string,
  *maxPrice?: string,
@@ -38,15 +39,17 @@ function productsQuery(cfg) {
   if (fpMax) q.set('max_price', fpMax);
   if (nic) q.set('nicotine', nic);
 
-  if (cat !== 'all' && fpProducer && (!brandPill || brandPill === 'all')) q.set('producer', fpProducer);
-
   const unbrand = cfg.unbrandedNarrow === true;
   const tier = cfg.narrowProducer?.trim?.() ? cfg.narrowProducer.trim() : null;
+  const forceFlat = cfg.forceFlatBrowse === true;
+  const tiered = cfg.useTieredBrandBrowse === true && !forceFlat;
 
-  if (cat === 'all') {
-    if (!cfg.forceFlatAll && unbrand) q.set('unbranded', '1');
-    else if (!cfg.forceFlatAll && tier) q.set('producer', tier);
-    else if (!cfg.forceFlatAll && fpProducer) q.set('producer', fpProducer);
+  if (tiered) {
+    if (unbrand) q.set('unbranded', '1');
+    else if (tier) q.set('producer', tier);
+    else if (fpProducer && (!brandPill || brandPill === 'all')) q.set('producer', fpProducer);
+  } else if (cat !== 'all' && fpProducer && (!brandPill || brandPill === 'all')) {
+    q.set('producer', fpProducer);
   }
 
   const qs = q.toString();
@@ -149,7 +152,7 @@ function ProductCardControls({ product, qty, onInc, onDec, maxQty }) {
             {pluralRu(qty, 'штучка', 'штучки', 'штучек')}
           </>
         ) : (
-          ''
+          <span style={{ color: 'var(--text3)', fontWeight: 600 }}>—</span>
         )}
       </div>
       <button
@@ -161,6 +164,7 @@ function ProductCardControls({ product, qty, onInc, onDec, maxQty }) {
           onInc();
         }}
         disabled={Boolean(disablePlus)}
+        aria-disabled={disablePlus ? true : undefined}
         aria-label={qty ? 'Ещё одна единица' : 'Добавить'}
         style={{
           minWidth: 44,
@@ -204,6 +208,8 @@ function ProductCard({ product }) {
       ? Number(stockRaw)
       : Number.POSITIVE_INFINITY;
 
+  /** Данные строки корзины: имя, бренд, остаток для лимита. */
+  const payload = () => ({
     product_id: id,
     name: String(product.name || ''),
     brand: product.brand != null ? String(product.brand) : '',
@@ -387,6 +393,7 @@ function BrandTierCard({ brandLabel, slug, count, onPick }) {
         cursor: 'pointer',
         touchAction: 'manipulation',
         textAlign: 'left',
+        WebkitTapHighlightColor: 'transparent',
       }}
     >
       <div
@@ -417,7 +424,7 @@ export default function Catalog() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  /** Вкладка «Все»: сначала производители, затем вкусы. */
+  /** Вкладки «Все» и «Картриджи»: сначала выбор производителя (строка brand), затем товары. */
   const [allBrowseTier, setAllBrowseTier] = useState(() => ({
     /** 'brands' | 'products' | 'products_flat' — полный список без деления по бренду. */
     mode: /** @type {'brands'|'products'|'products_flat'} */ ('brands'),
@@ -443,6 +450,18 @@ export default function Catalog() {
 
   const activeSlug = slug || 'all';
 
+  /** Двухшаговый каталог по полю brand (глобально или внутри «Картриджи»). */
+  const useTieredBrandBrowse =
+    activeSlug === 'all' || activeSlug === 'cartridges';
+
+  const browsingBrandTiles = useMemo(
+    () =>
+      useTieredBrandBrowse &&
+      allBrowseTier.mode === 'brands' &&
+      !filters.producer.trim(),
+    [useTieredBrandBrowse, allBrowseTier.mode, filters.producer],
+  );
+
   const resetAllBrowseForTab = useCallback(() => {
     setAllBrowseTier({ mode: 'brands', producer: null, unbranded: false });
   }, []);
@@ -461,9 +480,9 @@ export default function Catalog() {
     setActiveBrand('all');
   }, [activeSlug, resetAllBrowseForTab]);
 
-  /** Выбор производителя из фильтра на «Все» — выход из сетки брендов, приоритет над ручным шагом. */
+  /** Выбор производителя из фильтра — выход из сетки брендов (шаг «Все» / «Картриджи»). */
   useEffect(() => {
-    if (activeSlug !== 'all') return;
+    if (!useTieredBrandBrowse) return;
     const fp = filters.producer.trim();
     if (!fp) return;
     setAllBrowseTier(() => ({
@@ -471,7 +490,7 @@ export default function Catalog() {
       producer: null,
       unbranded: false,
     }));
-  }, [filters.producer, activeSlug]);
+  }, [filters.producer, useTieredBrandBrowse]);
 
   useEffect(() => {
     if (activeSlug === 'all') {
@@ -499,12 +518,9 @@ export default function Catalog() {
       .catch(() => {});
   }, [activeSlug]);
 
-  /** Сетка брендов (все / по категории «все-брендовая» модель когда slug не all). */
+  /** Сетка производителей по полю brand (вкладка «Все» или категория «Картриджи»). */
   useEffect(() => {
-    const needGroups =
-      activeSlug === 'all' &&
-      allBrowseTier.mode === 'brands' &&
-      !filters.producer.trim();
+    const needGroups = browsingBrandTiles;
 
     if (!needGroups) {
       setBrandGroups([]);
@@ -518,15 +534,18 @@ export default function Catalog() {
         setBrandGroups(Array.isArray(rows) ? rows : []))
       .catch(() => setBrandGroups([]))
       .finally(() => setGroupsLoading(false));
-  }, [activeSlug, allBrowseTier.mode, filters.minPrice, filters.maxPrice, filters.nicotine, filters.producer]);
+  }, [
+    browsingBrandTiles,
+    activeSlug,
+    filters.minPrice,
+    filters.maxPrice,
+    filters.nicotine,
+    filters.producer,
+  ]);
 
   useEffect(() => {
-    /** Не загружаем товары, пока на «Все» виден только выбор бренда — кроме плоского списка или фильтра производителя. */
-    const showOnlyBrandTiles =
-      activeSlug === 'all' &&
-      allBrowseTier.mode === 'brands' &&
-      !filters.producer.trim();
-    if (showOnlyBrandTiles) {
+    /** Не загружаем товары, пока показывается только выбор бренда. */
+    if (browsingBrandTiles) {
       setProducts([]);
       setLoading(false);
       setLoadError('');
@@ -542,8 +561,9 @@ export default function Catalog() {
       filters,
       narrowProducer: allBrowseTier.producer,
       unbrandedNarrow: allBrowseTier.unbranded,
-      forceFlatAll:
-        activeSlug === 'all' && allBrowseTier.mode === 'products_flat',
+      forceFlatBrowse:
+        useTieredBrandBrowse && allBrowseTier.mode === 'products_flat',
+      useTieredBrandBrowse,
     });
 
     let cancelled = false;
@@ -565,16 +585,19 @@ export default function Catalog() {
     return () => {
       cancelled = true;
     };
-  }, [activeSlug, activeBrand, filters, allBrowseTier]);
+  }, [
+    activeSlug,
+    activeBrand,
+    filters,
+    allBrowseTier,
+    browsingBrandTiles,
+    useTieredBrandBrowse,
+  ]);
 
   const headerSubtitle = useMemo(() => {
-    const showTiles =
-      activeSlug === 'all' &&
-      allBrowseTier.mode === 'brands' &&
-      !filters.producer.trim();
-    if (showTiles) return 'Сначала выберите производителя';
+    if (browsingBrandTiles) return 'Сначала выберите производителя';
     return `${products.length} ${pluralRu(products.length, 'товар', 'товара', 'товаров')}`;
-  }, [activeSlug, allBrowseTier.mode, filters.producer, products.length]);
+  }, [browsingBrandTiles, products.length]);
 
   /** Подстроить фильтры по метаданным (первый заход при пустых полях). */
   const applySuggestedPriceRange = useCallback(() => {
@@ -595,7 +618,10 @@ export default function Catalog() {
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto', paddingBottom: 4, touchAction: 'pan-x pinch-zoom', WebkitOverflowScrolling: 'touch' }}>
+      <div
+        className="catalog-h-scroll"
+        style={{ overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}
+      >
         <div style={{ display: 'flex', gap: 8, padding: '0 16px', width: 'max-content' }}>
           {[{ slug: 'all', name: 'Все', emoji: '🛍' }, ...categories].map((cat) => {
             const slugKey = cat.slug;
@@ -795,8 +821,11 @@ export default function Catalog() {
         </div>
       )}
 
-      {activeSlug !== 'all' && (
-        <div style={{ overflowX: 'auto', padding: '6px 0 0', touchAction: 'pan-x pinch-zoom', WebkitOverflowScrolling: 'touch' }}>
+      {activeSlug !== 'all' && !browsingBrandTiles && (
+        <div
+          className="catalog-h-scroll"
+          style={{ overflowX: 'auto', padding: '6px 0 0', WebkitOverflowScrolling: 'touch' }}
+        >
           <div style={{ display: 'flex', gap: 8, padding: '0 16px', width: 'max-content' }}>
             {[{ slug: 'all', name: 'Все бренды' }, ...brands].map((b) => {
               const slugKey = b.slug;
@@ -829,13 +858,8 @@ export default function Catalog() {
         </div>
       )}
 
-      {/** Навигация «назад» и плоский список только на вкладке «Все» */}
-      {activeSlug === 'all' &&
-        !(
-          activeSlug === 'all' &&
-          allBrowseTier.mode === 'brands' &&
-          !filters.producer.trim()
-        ) && (
+      {/** Назад к сетке производителей и плоский список — «Все» и «Картриджи». */}
+      {useTieredBrandBrowse && !browsingBrandTiles && (
           <div style={{ padding: '8px 16px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button
               type="button"
@@ -905,10 +929,8 @@ export default function Catalog() {
           </div>
         )}
 
-        {/* Сетка брендов вкладки «Все» */}
-        {activeSlug === 'all' &&
-          allBrowseTier.mode === 'brands' &&
-          !filters.producer.trim() && (
+        {/* Сетка производителей (поле brand) */}
+        {browsingBrandTiles && (
             <div style={{ paddingBottom: 8 }}>
               {groupsLoading ? (
                 <div className="spinner" />
@@ -946,15 +968,8 @@ export default function Catalog() {
                       Если нужен старый плоский список всего каталога
                     </div>
                   </button>
-                  {brandGroups.map((g, i) => (
-                    <div
-                      key={`${g.slug}-${i}`}
-                      style={{
-                        animation: `fadeUp 0.35s ${i * 0.04}s ease both`,
-                        opacity: 0,
-                        animationFillMode: 'forwards',
-                      }}
-                    >
+                  {brandGroups.map((g) => (
+                    <div key={`${g.slug}-${g.brand ?? 'nb'}`} className="catalog-brand-pop">
                       <BrandTierCard
                         brandLabel={g.brand || ''}
                         slug={g.slug}
@@ -982,27 +997,15 @@ export default function Catalog() {
             </div>
         )}
 
-        {!(
-          activeSlug === 'all' &&
-          allBrowseTier.mode === 'brands' &&
-          !filters.producer.trim()
-        ) && loading ? (
+        {!browsingBrandTiles && loading ? (
           <div className="spinner" />
-        ) : !(
-          activeSlug === 'all' &&
-          allBrowseTier.mode === 'brands' &&
-          !filters.producer.trim()
-        ) &&
+        ) : !browsingBrandTiles &&
           products.length === 0 ? (
             <div className="empty">
               <div className="empty-icon">📦</div>
               <div className="empty-title">Нет товаров</div>
             </div>
-          ) : !(
-              activeSlug === 'all' &&
-              allBrowseTier.mode === 'brands' &&
-              !filters.producer.trim()
-            ) ? (
+          ) : !browsingBrandTiles ? (
               <div
                 style={{
                   display: 'grid',
@@ -1014,11 +1017,10 @@ export default function Catalog() {
                 {products.map((p, i) => (
                   <div
                     key={String(p.id)}
+                    className="catalog-grid-pop"
                     style={{
                       minWidth: 0,
-                      animation: `fadeUp 0.35s ${i * 0.04}s ease both`,
-                      opacity: 0,
-                      animationFillMode: 'forwards',
+                      animationDelay: `${Math.min(i, 12) * 0.03}s`,
                     }}
                   >
                     <ProductCard product={p} />

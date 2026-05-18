@@ -67,6 +67,23 @@ img { display: block; }
   to { transform: rotate(360deg); }
 }
 
+/** Горизонтальный скролл категорий: не перехватывать вертикальный жест как pinch-zoom. */
+.catalog-h-scroll {
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes catalogPopIn {
+  from { transform: translateY(10px); }
+  to { transform: translateY(0); }
+}
+
+.catalog-grid-pop,
+.catalog-brand-pop {
+  animation: catalogPopIn 0.32s ease both;
+}
+
 .fade-up   { animation: fadeUp 0.4s ease both; }
 .fade-in   { animation: fadeIn 0.3s ease both; }
 
@@ -121,8 +138,8 @@ img { display: block; }
 .page {
   padding: 12px 0 calc(72px + env(safe-area-inset-bottom, 12px));
   padding-bottom: calc(72px + var(--safe-bottom, env(safe-area-inset-bottom, 12px)));
-  min-height: 100vh;
-  min-height: var(--viewport-stable-height, 100vh);
+  /* Дублирование min-height с #root давало лишнюю «пустую» высоту под контентом в Mini App */
+  min-height: 0;
 }
 
 /* Header */

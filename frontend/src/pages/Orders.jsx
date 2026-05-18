@@ -24,6 +24,20 @@ export default function Orders() {
   const [expanded, setExpanded] = useState(null);
   const [loadError, setLoadError] = useState('');
 
+  /**
+   * Подпись позиции в заказе: новые заказы уже с «бренд · вкус» в `name`;
+   * для старых позиций собираем из `brand` и `product_name`, если есть.
+   * @param {Record<string, unknown>} item
+   */
+  function orderLineLabel(item) {
+    const name = item?.name != null ? String(item.name).trim() : '';
+    if (name.includes('·')) return name;
+    const brand = item?.brand != null ? String(item.brand).trim() : '';
+    const pn = item?.product_name != null ? String(item.product_name).trim() : '';
+    if (brand && pn) return `${brand} · ${pn}`;
+    return name || pn || 'Товар';
+  }
+
   useEffect(() => {
     setLoadError('');
     apiFetch(`/api/orders/user/${user.id}`)
@@ -114,7 +128,7 @@ export default function Orders() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Товары</div>
                       {order.items.map((item, j) => (
                         <div key={j} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14, minWidth: 0 }}>
-                          <span style={{ color: 'var(--text2)', overflowWrap: 'anywhere' }}>{item.name} × {item.qty}</span>
+                          <span style={{ color: 'var(--text2)', overflowWrap: 'anywhere' }}>{orderLineLabel(item)} × {item.qty}</span>
                           <span style={{ fontWeight: 600, color: 'var(--text)', flexShrink: 0 }}>{formatByn(item.price * item.qty)}</span>
                         </div>
                       ))}
