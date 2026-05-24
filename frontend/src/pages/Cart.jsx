@@ -4,6 +4,7 @@ import { useCart, cartLineTitle } from '../store/cart';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
+import { Icon } from '../components/icons';
 
 export default function Cart() {
   const { cart, dispatch } = useCart();
@@ -53,7 +54,7 @@ export default function Cart() {
     return (
       <div className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
+          <div className="empty-icon"><Icon name="check" size="xl" /></div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800, marginBottom: 8 }}>Заказ оформлен!</div>
           <div style={{ color: 'var(--text2)', fontSize: 14 }}>Мы свяжемся с вами в Telegram</div>
         </div>
@@ -68,7 +69,7 @@ export default function Cart() {
           <div className="header-title">Корзина</div>
         </div>
         <div className="empty" style={{ paddingTop: 80 }}>
-          <div className="empty-icon">🛒</div>
+          <div className="empty-icon"><Icon name="cart" size="xl" /></div>
           <div className="empty-title">Корзина пуста</div>
           <p style={{ fontSize: 14, marginBottom: 20 }}>Добавьте товары из каталога</p>
           <button className="btn btn-primary" style={{ width: 'auto', padding: '12px 24px' }}

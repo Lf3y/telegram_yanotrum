@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCart } from '../store/cart';
 import { pluralRu } from '../lib/pluralRu';
-import { apiFetch } from '../lib/api';
+import { apiFetch, resolveImageUrl } from '../lib/api';
 import { formatByn } from '../lib/money';
+import { Icon, CategoryIcon, ProductImage } from '../components/icons';
 
 /**
  * @typedef {'categories'|'brands'|'products'|'search'} CatalogView
@@ -98,9 +99,9 @@ function ProductCardControls({ product, qty, onInc, onDec, maxQty }) {
         }}
         disabled={qty <= 0}
         style={{
-          minWidth: 44,
-          minHeight: 44,
-          padding: '0 12px',
+          minWidth: 36,
+          minHeight: 36,
+          padding: '0 10px',
           borderRadius: 12,
           background: qty > 0 ? 'var(--bg4)' : 'transparent',
           color: qty > 0 ? 'var(--text)' : 'var(--text3)',
@@ -198,128 +199,54 @@ function ProductCard({ product }) {
   });
 
   return (
-    <div
-      className="card catalog-card-shell"
-      style={{
-        padding: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        minWidth: 0,
-        overflow: 'hidden',
-        touchAction: 'manipulation',
-      }}
-    >
-      {product.image_url && (
-        <div
-          style={{
-            height: 96,
-            borderRadius: 12,
-            overflow: 'hidden',
-            background: 'var(--bg4)',
-            border: '1px solid var(--border)',
-            pointerEvents: 'none',
-          }}
-        >
-          <img
-            src={String(product.image_url)}
-            alt={String(product.name || '')}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
-            draggable={false}
-            loading="lazy"
-          />
-        </div>
-      )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontSize: 11,
-            color: 'var(--text3)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: 3,
-            overflowWrap: 'anywhere',
-          }}>
-            {product.brand || '·'}
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 16,
-            fontWeight: 700,
-            lineHeight: 1.2,
-            marginBottom: 4,
-            color: 'var(--text)',
-            overflowWrap: 'anywhere',
-          }}>
-            {product.name}
-          </div>
-          {product.description && (
-            <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.4, overflowWrap: 'anywhere' }}>
-              {product.description}
-            </div>
-          )}
-        </div>
+    <div className="card catalog-card-shell catalog-product-card">
+      <div className="catalog-product-media">
+        <ProductImage
+          src={resolveImageUrl(product.image_url)}
+          alt={String(product.name || '')}
+          className="catalog-product-img"
+        />
+      </div>
+      <div className="catalog-product-head">
+        <div className="catalog-product-brand">{product.brand || '·'}</div>
+        <div className="catalog-product-title">{product.name}</div>
+        {product.description && (
+          <div className="catalog-product-desc">{product.description}</div>
+        )}
       </div>
 
       {(product.volume || product.nicotine) && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', pointerEvents: 'none' }}>
+        <div className="catalog-product-badges">
           {product.volume && (
-            <span className="badge badge-accent" style={{ fontSize: 11 }}>{product.volume}</span>
+            <span className="badge badge-accent catalog-product-badge">{product.volume}</span>
           )}
           {product.nicotine && (
-            <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text2)', fontSize: 11 }}>
-              {product.nicotine}
-            </span>
+            <span className="badge catalog-product-badge catalog-product-badge--muted">{product.nicotine}</span>
           )}
         </div>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          marginTop: 'auto',
-          flexShrink: 0,
-          position: 'relative',
-          zIndex: 5,
-          isolation: 'isolate',
-          touchAction: 'manipulation',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>
-                {formatByn(product.price)}
-              </span>
-              {product.old_price && (
-                <span style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'line-through' }}>
-                  {formatByn(product.old_price)}
-                </span>
-              )}
-            </div>
-            {product.stock_qty != null && product.stock_qty >= 0 && product.stock_qty <= 15 && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: product.stock_qty <= 3 ? 'var(--accent2)' : 'var(--text3)',
-                  fontWeight: 600,
-                }}
-              >
-                {product.stock_qty === 0 ? 'Нет в наличии' : `Осталось ${product.stock_qty} шт.`}
-              </span>
+      <div className="catalog-product-footer">
+        <div className="catalog-product-price-wrap">
+          <div className="catalog-product-price-row">
+            <span className="catalog-product-price">{formatByn(product.price)}</span>
+            {product.old_price && (
+              <span className="catalog-product-old-price">{formatByn(product.old_price)}</span>
             )}
           </div>
-          <ProductCardControls
-            product={product}
-            qty={qty}
-            maxQty={maxQ}
-            onInc={() => dispatch({ type: 'ADD', item: payload() })}
-            onDec={() => qty > 0 && dispatch({ type: 'DEC', product_id: id })}
-          />
+          {product.stock_qty != null && product.stock_qty >= 0 && product.stock_qty <= 15 && (
+            <span className={`catalog-product-stock${product.stock_qty <= 3 ? ' catalog-product-stock--low' : ''}`}>
+              {product.stock_qty === 0 ? 'Нет в наличии' : `Осталось ${product.stock_qty} шт.`}
+            </span>
+          )}
         </div>
+        <ProductCardControls
+          product={product}
+          qty={qty}
+          maxQty={maxQ}
+          onInc={() => dispatch({ type: 'ADD', item: payload() })}
+          onDec={() => qty > 0 && dispatch({ type: 'DEC', product_id: id })}
+        />
       </div>
     </div>
   );
@@ -329,9 +256,9 @@ function ProductCard({ product }) {
  * @param {{ category: Record<string, unknown>, onPick: () => void, index?: number }} props
  */
 function CategoryCard({ category, onPick, index = 0 }) {
-  const emoji = String(category.emoji || '📦');
   const name = String(category.name || '');
   const description = String(category.description || '');
+  const img = resolveImageUrl(category.image_url);
 
   return (
     <button
@@ -351,45 +278,19 @@ function CategoryCard({ category, onPick, index = 0 }) {
         animationFillMode: 'forwards',
       }}
     >
-      {category.image_url ? (
-        <div style={{ height: 96, background: 'var(--bg4)' }}>
-          <img
-            src={String(category.image_url)}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            loading="lazy"
-          />
-        </div>
-      ) : (
-        <div
-          style={{
-            height: 72,
-            background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.15) 0%, var(--bg4) 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 36,
-          }}
-        >
-          {emoji}
-        </div>
-      )}
-      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-        <div
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 15,
-            fontWeight: 700,
-            color: 'var(--text)',
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {emoji} {name}
-        </div>
-        {description && (
-          <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4, overflowWrap: 'anywhere' }}>
-            {description}
+      <div className="catalog-category-media">
+        {img ? (
+          <ProductImage src={img} alt="" className="catalog-category-img" />
+        ) : (
+          <div className="catalog-category-icon-wrap">
+            <CategoryIcon slug={category.slug} name={name} size="lg" />
           </div>
+        )}
+      </div>
+      <div className="catalog-category-body">
+        <div className="catalog-category-name">{name}</div>
+        {description && (
+          <div className="catalog-category-desc">{description}</div>
         )}
       </div>
     </button>
@@ -407,6 +308,7 @@ function CategoryCard({ category, onPick, index = 0 }) {
 function BrandCard({ brandLabel, count, imageUrl, onPick }) {
   const title = brandLabel?.trim() ? brandLabel.trim() : 'Без бренда';
   const sub = `${count} ${pluralRu(Number(count), 'вкус', 'вкуса', 'вкусов')}`;
+  const img = resolveImageUrl(imageUrl);
 
   return (
     <button
@@ -429,39 +331,18 @@ function BrandCard({ brandLabel, count, imageUrl, onPick }) {
         overflow: 'hidden',
       }}
     >
-      {imageUrl ? (
-        <div style={{ height: 72, background: 'var(--bg4)' }}>
-          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-        </div>
-      ) : (
-        <div
-          style={{
-            height: 56,
-            background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.12) 0%, var(--bg4) 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 28,
-          }}
-        >
-          🏷️
-        </div>
-      )}
-      <div style={{ padding: '14px 16px 16px' }}>
-        <div
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 16,
-            fontWeight: 800,
-            color: 'var(--text)',
-            marginBottom: 4,
-            lineHeight: 1.25,
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {title}
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)' }}>{sub}</div>
+      <div className="catalog-brand-media">
+        {img ? (
+          <ProductImage src={img} alt="" className="catalog-brand-img" placeholderIcon="tag" />
+        ) : (
+          <div className="catalog-brand-icon-wrap">
+            <Icon name="tag" size="md" />
+          </div>
+        )}
+      </div>
+      <div className="catalog-brand-body">
+        <div className="catalog-brand-title">{title}</div>
+        <div className="catalog-brand-sub">{sub}</div>
       </div>
     </button>
   );
@@ -473,7 +354,9 @@ function BrandCard({ brandLabel, count, imageUrl, onPick }) {
 function CatalogSearchBar({ value, onChange, placeholder = 'Поиск по названию или бренду…' }) {
   return (
     <div className="catalog-search-wrap">
-      <span className="catalog-search-icon" aria-hidden>🔍</span>
+      <span className="catalog-search-icon" aria-hidden>
+        <Icon name="search" size="sm" />
+      </span>
       <input
         type="search"
         className="catalog-search-input"
@@ -490,7 +373,7 @@ function CatalogSearchBar({ value, onChange, placeholder = 'Поиск по на
           onClick={() => onChange('')}
           aria-label="Очистить поиск"
         >
-          ✕
+          <Icon name="close" size="xs" />
         </button>
       )}
     </div>
@@ -761,9 +644,12 @@ export default function Catalog() {
               background: filtersOpen || hasActiveFilters ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--bg3)',
               color: 'var(--text)',
               touchAction: 'manipulation',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
-            ⚙️ Фильтры{hasActiveFilters ? ' •' : ''}
+            <Icon name="filter" size="xs" /> Фильтры{hasActiveFilters ? ' •' : ''}
           </button>
         </div>
       )}
@@ -862,7 +748,7 @@ export default function Catalog() {
               <div className="spinner" />
             ) : brandGroups.length === 0 ? (
               <div className="empty" style={{ padding: '36px 0' }}>
-                <div className="empty-icon">🏷️</div>
+                <div className="empty-icon"><Icon name="tag" size="xl" /></div>
                 <div className="empty-title">Нет брендов</div>
                 <p style={{ fontSize: 14 }}>Попробуйте другой запрос или сбросьте фильтры</p>
               </div>
@@ -873,7 +759,9 @@ export default function Catalog() {
                   className="card catalog-card-shell catalog-all-products-card touch-target-min"
                   onClick={pickAllProducts}
                 >
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>📋 Все товары категории</div>
+                  <div className="catalog-all-products-title">
+                    <Icon name="clipboard" size="sm" /> Все товары категории
+                  </div>
                   <div style={{ marginTop: 4, fontSize: 13, color: 'var(--text3)' }}>
                     Показать полный список без выбора бренда
                   </div>
@@ -899,13 +787,13 @@ export default function Catalog() {
               <div className="spinner" />
             ) : view === 'search' && debouncedSearch.length < 2 ? (
               <div className="empty" style={{ padding: '32px 0' }}>
-                <div className="empty-icon">🔍</div>
+                <div className="empty-icon"><Icon name="search" size="xl" /></div>
                 <div className="empty-title">Начните вводить запрос</div>
                 <p style={{ fontSize: 14, color: 'var(--text3)' }}>Минимум 2 символа для поиска по всему каталогу</p>
               </div>
             ) : products.length === 0 ? (
               <div className="empty">
-                <div className="empty-icon">📦</div>
+                <div className="empty-icon"><Icon name="package" size="xl" /></div>
                 <div className="empty-title">Ничего не найдено</div>
                 <p style={{ fontSize: 14, color: 'var(--text3)' }}>Попробуйте другой запрос или сбросьте фильтры</p>
               </div>

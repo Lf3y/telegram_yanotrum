@@ -3,6 +3,7 @@ import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { pluralRu } from '../lib/pluralRu';
+import { Icon } from '../components/icons';
 
 const STATUS_LABELS = {
   new: { label: 'Новый', color: 'var(--accent2)', bg: 'rgba(var(--accent-rgb), 0.14)' },
@@ -76,7 +77,7 @@ export default function Orders() {
 
       {orders.length === 0 ? (
         <div className="empty" style={{ paddingTop: 60 }}>
-          <div className="empty-icon">📋</div>
+          <div className="empty-icon"><Icon name="clipboard" size="xl" /></div>
           <div className="empty-title">Заказов ещё нет</div>
           <p style={{ fontSize: 14 }}>Ваши заказы появятся здесь</p>
         </div>
@@ -134,14 +135,16 @@ export default function Orders() {
                       ))}
 
                       {order.customer_note && (
-                        <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--bg4)', borderRadius: 8, fontSize: 13, color: 'var(--text2)' }}>
-                          📝 {order.customer_note}
+                        <div className="order-note">
+                          <Icon name="note" size="xs" /> {order.customer_note}
                         </div>
                       )}
 
                       {order.owner_note && (
                         <div style={{ marginTop: 8, padding: '12px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>💬 Ответ магазина</div>
+                          <div className="order-reply-label">
+                            <Icon name="chat" size="xs" /> Ответ магазина
+                          </div>
                           <div style={{ fontSize: 14, color: 'var(--text)' }}>{order.owner_note}</div>
                         </div>
                       )}

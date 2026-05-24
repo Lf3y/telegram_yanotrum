@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Catalog from './pages/Catalog';
 import Cart from './pages/Cart';
 import Orders from './pages/Orders';
+import Assistant from './pages/Assistant';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/catalog/:slug" element={<><Catalog /><BottomNav /></>} />
           <Route path="/cart" element={<><Cart /><BottomNav /></>} />
           <Route path="/orders" element={<><Orders /><BottomNav /></>} />
+          <Route path="/assistant" element={<><Assistant /><BottomNav /></>} />
         </Routes>
       </BrowserRouter>
     </CartProvider>

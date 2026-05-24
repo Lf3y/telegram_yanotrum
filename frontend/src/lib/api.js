@@ -28,6 +28,26 @@ export function apiUrl(pathname) {
 }
 
 /**
+ * Абсолютный URL картинки: /uploads/... и localhost → API base.
+ * @param {string|null|undefined} url
+ * @returns {string}
+ */
+export function resolveImageUrl(url) {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (!s) return '';
+  const base = resolveApiBase();
+  if (/^https?:\/\//i.test(s)) {
+    if (base && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(s)) {
+      return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base);
+    }
+    return s;
+  }
+  if (s.startsWith('/') && base) return `${base}${s}`;
+  return s;
+}
+
+/**
  * Обёртка над fetch с проверкой ответа.
  * Ошибки сети / CORS / 404 на статике — отклонённый промис и текст в Error.message (если есть JSON error).
  */

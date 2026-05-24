@@ -1,0 +1,82 @@
+# Vape Shop — Render Blueprint (backend + витрина + админка + Postgres)
+# Репозиторий: https://github.com/Lf3y/telegram_yanotrum
+# Деплой: https://dashboard.render.com/blueprint/new?repo=https://github.com/Lf3y/telegram_yanotrum
+
+databases:
+  - name: vape-shop-db
+    databaseName: vape_shop
+    user: vape_shop
+    plan: free
+    postgresMajorVersion: "16"
+    ipAllowList: []
+
+services:
+  # API + Telegram webhook
+  - type: web
+    name: vape-shop-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vape-shop-db
+          property: connectionString
+      - key: FRONTEND_URL
+        value: https://vape-shop-frontend.onrender.com
+      - key: ADMIN_URL
+        value: https://vape-shop-admin.onrender.com
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_CHAT_ID
+        sync: false
+      - key: OWNER_USER_ID
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+  # Витрина (Vite + React)
+  - type: web
+    name: vape-shop-frontend
+    runtime: static
+    plan: free
+    branch: main
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    buildFilter:
+      paths:
+        - frontend/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://vape-shop-api.onrender.com
+
+  # Админ-панель (Vite + React, API URL задаётся в UI при входе)
+  - type: web
+    name: vape-shop-admin
+    runtime: static
+    plan: free
+    branch: main
+    rootDir: admin
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    buildFilter:
+      paths:
+        - admin/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

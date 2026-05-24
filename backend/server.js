@@ -11,8 +11,10 @@ import { transitionOrderStatus } from './orderStatus.js';
 import { runProductImport } from './importProducts.js';
 import { reserveStock } from './stock.js';
 import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
+import { adviseProducts } from './aiAdvisor.js';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -30,6 +32,8 @@ app.use(cors({
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174',
+      'https://telegram-yanotrum-client.onrender.com',
+      'https://vape-shop-frontend.onrender.com',
     ]);
     if (process.env.ADMIN_URL) allow.add(process.env.ADMIN_URL);
     return cb(null, allow.has(origin));
@@ -46,9 +50,41 @@ function requireAdmin(req, res, next) {
 }
 
 function publicBaseUrl(req) {
+  const envBase = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_BASE_URL || '')
+    .trim()
+    .replace(/\/$/, '');
+  if (envBase) return envBase;
   const proto = (req.header('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
   const host = req.header('x-forwarded-host') || req.header('host');
   return `${proto}://${host}`;
+}
+
+/** @param {string|null|undefined} url @param {import('express').Request} req */
+function normalizeImageUrl(url, req) {
+  if (!url) return url;
+  const s = String(url).trim();
+  if (!s) return null;
+  const base = publicBaseUrl(req);
+  if (/^https?:\/\//i.test(s)) {
+    return s
+      .replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base)
+      .replace(/^http:\/\//i, 'https://');
+  }
+  if (s.startsWith('/')) return `${base}${s}`;
+  return s;
+}
+
+/** @param {Record<string, unknown>} row @param {import('express').Request} req */
+function withNormalizedImages(row, req) {
+  if (!row || typeof row !== 'object') return row;
+  const o = { ...row };
+  if ('image_url' in o) o.image_url = normalizeImageUrl(o.image_url, req);
+  return o;
+}
+
+/** @param {Record<string, unknown>[]} rows @param {import('express').Request} req */
+function withNormalizedImagesList(rows, req) {
+  return (rows || []).map((r) => withNormalizedImages(r, req));
 }
 
 const upload = multer({
@@ -159,9 +195,9 @@ app.post('/api/admin/import/products', requireAdmin, handleImportMulter, async (
   }
 });
 
-app.get('/api/categories', async (_req, res, next) => {
+app.get('/api/categories', async (req, res, next) => {
   try {
-    res.json(await all('SELECT * FROM categories ORDER BY sort_order'));
+    res.json(withNormalizedImagesList(await all('SELECT * FROM categories ORDER BY sort_order'), req));
   } catch (e) { next(e); }
 });
 
@@ -365,7 +401,7 @@ app.get('/api/brands', async (req, res, next) => {
        ORDER BY b.sort_order, b.name`,
       [category]
     );
-    res.json(rows);
+    res.json(withNormalizedImagesList(rows, req));
   } catch (e) { next(e); }
 });
 
@@ -563,7 +599,7 @@ app.get('/api/catalog/brand-groups', async (req, res, next) => {
       }));
     }
 
-    res.json(data);
+    res.json(withNormalizedImagesList(data, req));
   } catch (e) {
     console.error('/api/catalog/brand-groups', e?.message || e);
     next(e);
@@ -677,7 +713,7 @@ app.get('/api/products', async (req, res, next) => {
          ORDER BY p.sort_order, p.name`,
         [parsed.category, parsed.brandSlugFromTable, ...extraParams],
       );
-      return res.json(rows);
+      return res.json(withNormalizedImagesList(rows, req));
     }
 
     if (parsed.category) {
@@ -688,16 +724,46 @@ app.get('/api/products', async (req, res, next) => {
          ORDER BY p.sort_order, p.name`,
         [parsed.category, ...extraParams],
       );
-      return res.json(rows);
+      return res.json(withNormalizedImagesList(rows, req));
     }
 
     rows = await all(
       `SELECT p.* FROM products p WHERE ${avail}${extraSql} ORDER BY p.sort_order, p.name`,
       extraParams,
     );
-    return res.json(rows);
+    return res.json(withNormalizedImagesList(rows, req));
   } catch (e) {
     console.error('/api/products', e?.stack || e?.message || e);
+    next(e);
+  }
+});
+
+app.post('/api/ai/advise', async (req, res, next) => {
+  try {
+    const { query, category } = req.body || {};
+    const avail = productAvailableSQL('p');
+    let sql = `SELECT p.* FROM products p WHERE ${avail}`;
+    const params = [];
+    if (category) {
+      sql += ' AND p.category_id = (SELECT id FROM categories WHERE slug=? LIMIT 1)';
+      params.push(String(category));
+    }
+    sql += ' ORDER BY p.sort_order, p.name LIMIT 120';
+    const products = withNormalizedImagesList(await all(sql, params), req);
+    const advice = await adviseProducts(String(query || ''), products);
+    const byId = new Map(products.map((p) => [Number(p.id), p]));
+    const enriched = advice.picks
+      .map((pick) => {
+        const p = byId.get(Number(pick.id));
+        if (!p) return null;
+        return { ...p, reason: pick.reason };
+      })
+      .filter(Boolean);
+    res.json({ intro: advice.intro, products: enriched });
+  } catch (e) {
+    if (e?.code === 'AI_NOT_CONFIGURED') return res.status(503).json({ error: e.message, code: e.code });
+    if (e?.code === 'QUERY_TOO_SHORT') return res.status(400).json({ error: e.message, code: e.code });
+    if (e?.code === 'NO_PRODUCTS') return res.status(404).json({ error: e.message, code: e.code });
     next(e);
   }
 });

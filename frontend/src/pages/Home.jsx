@@ -1,24 +1,23 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTelegram } from '../hooks/useTelegram';
-import { apiFetch } from '../lib/api';
+import { Icon } from '../components/icons';
 
 const STEPS = [
   {
     num: '01',
-    icon: '🧭',
+    icon: 'compass',
     title: 'Выберите в каталоге',
     text: 'Категория → бренд → вкус. Нажимайте «+», чтобы добавить в корзину.',
   },
   {
     num: '02',
-    icon: '🛒',
+    icon: 'cart',
     title: 'Оформите заказ',
     text: 'В корзине проверьте состав, добавьте комментарий и отправьте заявку.',
   },
   {
     num: '03',
-    icon: '💬',
+    icon: 'chat',
     title: 'Ждите связи',
     text: 'Магазин напишет в Telegram — подтвердим детали, оплату и выдачу.',
   },
@@ -26,24 +25,6 @@ const STEPS = [
 
 export default function Home() {
   const { user } = useTelegram();
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-
-  useEffect(() => {
-    setLoadError('');
-    apiFetch('/api/categories')
-      .then(r => r.json())
-      .then(data => {
-        setCategories(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch((e) => {
-        setCategories([]);
-        setLoadError(String(e.message || 'Не удалось загрузить категории'));
-        setLoading(false);
-      });
-  }, []);
 
   return (
     <div className="page home-page">
@@ -69,7 +50,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="home-flow">
+      <section className="home-flow home-flow--landing">
         <div className="home-flow-head">
           <span className="home-flow-tag">Как это работает</span>
           <h2 className="home-flow-title">Три шага до заказа</h2>
@@ -87,7 +68,9 @@ export default function Home() {
                 <span className="home-step-num">{step.num}</span>
               </div>
               <div className="home-step-body">
-                <span className="home-step-icon" aria-hidden="true">{step.icon}</span>
+                <span className="home-step-icon" aria-hidden="true">
+                  <Icon name={step.icon} size="md" />
+                </span>
                 <h3 className="home-step-title">{step.title}</h3>
                 <p className="home-step-text">{step.text}</p>
               </div>
@@ -95,46 +78,17 @@ export default function Home() {
           ))}
         </div>
 
-        <Link to="/catalog" className="home-cta">
-          <span className="home-cta-glow" aria-hidden="true" />
-          <span className="home-cta-label">Открыть каталог</span>
-          <span className="home-cta-arrow" aria-hidden="true">→</span>
-        </Link>
-      </section>
-
-      <section className="home-categories">
-        <h2 className="home-categories-title">Категории</h2>
-        {loadError && (
-          <div className="catalog-error-banner">
-            {loadError}
-          </div>
-        )}
-        {loading ? (
-          <div className="spinner" />
-        ) : (
-          <div className="catalog-category-grid">
-            {categories.map((cat, i) => (
-              <Link
-                key={cat.id}
-                to={`/catalog/${cat.slug}`}
-                className="card home-category-card"
-                style={{ animationDelay: `${0.05 * i}s` }}
-              >
-                {cat.image_url ? (
-                  <div className="home-category-media">
-                    <img src={cat.image_url} alt="" loading="lazy" />
-                  </div>
-                ) : (
-                  <div className="home-category-emoji">{cat.emoji}</div>
-                )}
-                <div className="home-category-info">
-                  <div className="home-category-name">{cat.emoji} {cat.name}</div>
-                  <div className="home-category-desc">{cat.description}</div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+        <div className="home-cta-row">
+          <Link to="/catalog" className="home-cta">
+            <span className="home-cta-glow" aria-hidden="true" />
+            <span className="home-cta-label">Открыть каталог</span>
+            <span className="home-cta-arrow" aria-hidden="true">→</span>
+          </Link>
+          <Link to="/assistant" className="home-cta home-cta--secondary">
+            <Icon name="sparkles" size="sm" />
+            <span className="home-cta-label">Подобрать вкус с AI</span>
+          </Link>
+        </div>
       </section>
     </div>
   );

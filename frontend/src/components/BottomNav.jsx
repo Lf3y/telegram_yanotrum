@@ -33,6 +33,14 @@ export default function BottomNav() {
         Корзина
       </Link>
 
+      <Link to="/assistant" className={pathname === '/assistant' ? 'active' : ''}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l1.2 4.2L17.5 8.5l-4.3 1.2L12 14l-1.2-4.3L6.5 8.5l4.3-1.2L12 3z" fill="currentColor" stroke="none" />
+          <path d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14z" fill="currentColor" stroke="none" opacity="0.7" />
+        </svg>
+        AI
+      </Link>
+
       <Link to="/orders" className={pathname === '/orders' ? 'active' : ''}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
