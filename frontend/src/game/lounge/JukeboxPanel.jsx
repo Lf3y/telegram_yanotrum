@@ -30,7 +30,8 @@ import { useVisualViewportInset } from '../../hooks/useVisualViewportInset';
  *   userId: string | number,
  *   playerName: string,
  *   jukeboxState: JukeboxState | null,
- *   onQueued: (balance: number) => void,
+ *   onQueued: (balance: number, jukebox?: JukeboxState | null) => void,
+ *   onUserActivate?: () => void,
  * }} props
  */
 export function JukeboxPanel({
@@ -42,6 +43,7 @@ export function JukeboxPanel({
   playerName,
   jukeboxState,
   onQueued,
+  onUserActivate,
 }) {
   const [query, setQuery] = useState('');
   const [tracks, setTracks] = useState(/** @type {JukeboxTrack[]} */ ([]));
@@ -106,6 +108,7 @@ export function JukeboxPanel({
       return;
     }
 
+    onUserActivate?.();
     setQueueingId(track.id);
     setError('');
     try {
@@ -119,7 +122,7 @@ export function JukeboxPanel({
         }),
       });
       const data = await res.json();
-      onQueued(Number(data.balance || 0));
+      onQueued(Number(data.balance || 0), data.jukebox || null);
       onClose();
     } catch (e) {
       setError(String(e.message || 'Не удалось поставить трек'));

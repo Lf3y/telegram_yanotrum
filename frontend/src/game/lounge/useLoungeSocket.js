@@ -183,6 +183,10 @@ export function useLoungeSocket(user) {
     socketRef.current?.emit('player:customize', { color: nextColor });
   }, [user.id]);
 
+  const applyJukeboxState = useCallback((state) => {
+    setJukeboxState(state || null);
+  }, []);
+
   return {
     selfId,
     world,
@@ -198,5 +202,6 @@ export function useLoungeSocket(user) {
     sendVape,
     sendJukeboxFinished,
     setColor,
+    applyJukeboxState,
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 /**
  * @typedef {Object} JukeboxTrack
@@ -44,6 +44,15 @@ function loadSoundCloudApi() {
 }
 
 /**
+ * @typedef {Object} SoundCloudWidget
+ * @property {(event: string, listener: () => void) => void} bind
+ * @property {() => void} play
+ * @property {() => void} pause
+ * @property {(ms: number) => void} seekTo
+ * @property {(callback: (paused: boolean) => void) => void} isPaused
+ */
+
+/**
  * Синхронизирует общий SoundCloud-плеер лаунжа для всех игроков.
  * @param {JukeboxState | null} jukeboxState
  * @param {{ onFinished?: () => void }} [options]
@@ -51,9 +60,14 @@ function loadSoundCloudApi() {
 export function useSoundCloudPlayer(jukeboxState, options = {}) {
   const onFinishedRef = useRef(options.onFinished);
   const iframeRef = useRef(null);
-  const widgetRef = useRef(null);
-  const lastTrackKeyRef = useRef('');
+  const widgetRef = useRef(/** @type {SoundCloudWidget | null} */ (null));
+  const sessionRef = useRef(0);
+  const activeTrackKeyRef = useRef('');
+  const loadingTrackKeyRef = useRef('');
   const finishedTrackKeyRef = useRef('');
+  const userActivatedRef = useRef(false);
+  const pendingPlayRef = useRef(false);
+  const retryTimerRef = useRef(0);
 
   useEffect(() => {
     onFinishedRef.current = options.onFinished;
@@ -63,45 +77,130 @@ export function useSoundCloudPlayer(jukeboxState, options = {}) {
     loadSoundCloudApi().catch(() => {});
   }, []);
 
+  /**
+   * Помечает, что пользователь уже взаимодействовал со страницей.
+   */
+  const unlockPlayback = useCallback(() => {
+    userActivatedRef.current = true;
+    const widget = widgetRef.current;
+    if (!widget || !pendingPlayRef.current) return;
+
+    widget.isPaused((paused) => {
+      if (paused) widget.play();
+    });
+  }, []);
+
+  /**
+   * Планирует повторную попытку play(), если браузер заблокировал autoplay.
+   * @param {SoundCloudWidget} widget
+   * @param {number} session
+   * @param {number} attempt
+   */
+  const schedulePlayRetry = useCallback((widget, session, attempt = 0) => {
+    window.clearTimeout(retryTimerRef.current);
+    if (attempt >= 6 || session !== sessionRef.current) return;
+
+    retryTimerRef.current = window.setTimeout(() => {
+      if (session !== sessionRef.current) return;
+
+      widget.isPaused((paused) => {
+        if (!paused) {
+          pendingPlayRef.current = false;
+          return;
+        }
+
+        if (userActivatedRef.current) {
+          widget.play();
+        }
+
+        schedulePlayRetry(widget, session, attempt + 1);
+      });
+    }, attempt === 0 ? 250 : 500);
+  }, []);
+
+  /**
+   * Запускает воспроизведение с синхронизацией по startedAt.
+   * @param {SoundCloudWidget} widget
+   * @param {number} offsetMs
+   * @param {number} session
+   */
+  const startSyncedPlayback = useCallback((widget, offsetMs, session) => {
+    if (session !== sessionRef.current) return;
+
+    pendingPlayRef.current = true;
+
+    const playFromCurrentPosition = () => {
+      if (session !== sessionRef.current) return;
+      widget.play();
+      schedulePlayRetry(widget, session);
+    };
+
+    if (offsetMs > 400) {
+      widget.seekTo(offsetMs);
+      window.setTimeout(playFromCurrentPosition, 120);
+      return;
+    }
+
+    playFromCurrentPosition();
+  }, [schedulePlayRetry]);
+
+  const trackId = jukeboxState?.track?.id;
+  const permalink = jukeboxState?.track?.permalink;
+  const startedAt = Number(jukeboxState?.startedAt || 0);
+  const durationMs = Number(jukeboxState?.track?.durationMs || 0);
+
   useEffect(() => {
-    const track = jukeboxState?.track;
-    if (!track?.permalink || !iframeRef.current) {
-      lastTrackKeyRef.current = '';
+    if (!permalink || !iframeRef.current) {
+      sessionRef.current += 1;
+      activeTrackKeyRef.current = '';
+      loadingTrackKeyRef.current = '';
       finishedTrackKeyRef.current = '';
+      pendingPlayRef.current = false;
+      window.clearTimeout(retryTimerRef.current);
       widgetRef.current?.pause();
       return undefined;
     }
 
-    const startedAt = Number(jukeboxState.startedAt || 0);
-    const durationMs = Number(track.durationMs || 0);
+    const trackKey = `${trackId}:${startedAt}`;
     const offsetMs = Math.max(0, Date.now() - startedAt);
-    const trackKey = `${track.id}:${startedAt}`;
 
     if (durationMs > 0 && offsetMs >= durationMs) {
-      lastTrackKeyRef.current = '';
+      activeTrackKeyRef.current = '';
+      loadingTrackKeyRef.current = '';
+      pendingPlayRef.current = false;
       widgetRef.current?.pause();
-      onFinishedRef.current?.();
+      if (finishedTrackKeyRef.current !== trackKey) {
+        finishedTrackKeyRef.current = trackKey;
+        onFinishedRef.current?.();
+      }
       return undefined;
     }
 
-    if (lastTrackKeyRef.current === trackKey && widgetRef.current) {
+    if (activeTrackKeyRef.current === trackKey || loadingTrackKeyRef.current === trackKey) {
       return undefined;
     }
 
-    lastTrackKeyRef.current = trackKey;
+    loadingTrackKeyRef.current = trackKey;
     finishedTrackKeyRef.current = '';
+    const session = sessionRef.current + 1;
+    sessionRef.current = session;
     let cancelled = false;
 
     /**
-     * Запускает трек в iframe SoundCloud с синхронизацией по startedAt.
+     * Загружает трек в iframe SoundCloud и запускает синхронизированное воспроизведение.
      */
     async function playTrack() {
       await loadSoundCloudApi();
-      if (cancelled || !iframeRef.current || !window.SC?.Widget) return;
+      if (cancelled || session !== sessionRef.current || !iframeRef.current || !window.SC?.Widget) {
+        if (loadingTrackKeyRef.current === trackKey) {
+          loadingTrackKeyRef.current = '';
+        }
+        return;
+      }
 
       const params = new URLSearchParams({
-        url: track.permalink,
-        auto_play: 'false',
+        url: permalink,
+        auto_play: 'true',
         hide_related: 'true',
         show_comments: 'false',
         show_user: 'false',
@@ -115,26 +214,50 @@ export function useSoundCloudPlayer(jukeboxState, options = {}) {
       widgetRef.current = widget;
 
       widget.bind(window.SC.Widget.Events.READY, () => {
-        if (cancelled) return;
-        if (offsetMs > 0) {
-          widget.seekTo(offsetMs);
-        }
-        widget.play();
+        if (cancelled || session !== sessionRef.current) return;
+        startSyncedPlayback(widget, offsetMs, session);
+      });
+
+      widget.bind(window.SC.Widget.Events.PLAY, () => {
+        if (cancelled || session !== sessionRef.current) return;
+        activeTrackKeyRef.current = trackKey;
+        loadingTrackKeyRef.current = '';
+        pendingPlayRef.current = false;
+        window.clearTimeout(retryTimerRef.current);
       });
 
       widget.bind(window.SC.Widget.Events.FINISH, () => {
+        if (cancelled || session !== sessionRef.current) return;
         widget.pause();
+        activeTrackKeyRef.current = '';
+        loadingTrackKeyRef.current = '';
+        pendingPlayRef.current = false;
         if (finishedTrackKeyRef.current === trackKey) return;
         finishedTrackKeyRef.current = trackKey;
         onFinishedRef.current?.();
       });
+
+      widget.bind(window.SC.Widget.Events.ERROR, () => {
+        if (cancelled || session !== sessionRef.current) return;
+        pendingPlayRef.current = true;
+        schedulePlayRetry(widget, session);
+      });
     }
 
     playTrack();
+
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimerRef.current);
+      if (loadingTrackKeyRef.current === trackKey) {
+        loadingTrackKeyRef.current = '';
+      }
     };
-  }, [jukeboxState]);
+  }, [durationMs, permalink, schedulePlayRetry, startSyncedPlayback, startedAt, trackId]);
 
-  return iframeRef;
+  useEffect(() => () => {
+    window.clearTimeout(retryTimerRef.current);
+  }, []);
+
+  return { iframeRef, unlockPlayback };
 }

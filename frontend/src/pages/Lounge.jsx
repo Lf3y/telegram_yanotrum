@@ -70,6 +70,7 @@ export default function Lounge() {
     sendVape,
     sendJukeboxFinished,
     setColor,
+    applyJukeboxState,
   } = useLoungeSocket(user);
 
   const [chatText, setChatText] = useState('');
@@ -81,9 +82,17 @@ export default function Lounge() {
   const selfPlayerRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const wasMovingRef = useRef(false);
-  const soundCloudIframeRef = useSoundCloudPlayer(jukeboxState, {
+  const { iframeRef: soundCloudIframeRef, unlockPlayback } = useSoundCloudPlayer(jukeboxState, {
     onFinished: sendJukeboxFinished,
   });
+
+  /**
+   * Разблокирует звук лаунжа и jukebox после жеста пользователя.
+   */
+  const activateLoungeAudio = () => {
+    audio.unlock();
+    unlockPlayback();
+  };
   const playerName = [user.first_name, user.last_name].filter(Boolean).join(' ')
     || user.username
     || 'Игрок';
@@ -226,6 +235,7 @@ export default function Lounge() {
     event.preventDefault();
     const text = chatText.trim();
     if (!text) return;
+    activateLoungeAudio();
     audio.play('chat');
     sendChat(text);
     setChatText('');
@@ -283,17 +293,23 @@ export default function Lounge() {
 
         <div className="lounge-hud">
           <VirtualJoystick
-            onStart={audio.unlock}
+            onStart={activateLoungeAudio}
             onChange={(vector) => {
               joystickRef.current = vector;
             }}
           />
           <div className="lounge-actions">
-            <button type="button" className="lounge-action-btn" onClick={() => setJukeboxOpen(true)}>
+            <button type="button" className="lounge-action-btn" onClick={() => {
+              activateLoungeAudio();
+              setJukeboxOpen(true);
+            }}>
               🎵
               <span>Jukebox</span>
             </button>
-            <button type="button" className="lounge-action-btn" onClick={handleVape}>
+            <button type="button" className="lounge-action-btn" onClick={() => {
+              activateLoungeAudio();
+              handleVape();
+            }}>
               💨
               <span>Вейп</span>
             </button>
@@ -304,7 +320,10 @@ export default function Lounge() {
                   type="button"
                   className={`lounge-color${item === color ? ' lounge-color--active' : ''}`}
                   style={{ background: item }}
-                  onClick={() => handleColorChange(item)}
+                  onClick={() => {
+                    activateLoungeAudio();
+                    handleColorChange(item);
+                  }}
                   aria-label={`Цвет ${item}`}
                 />
               ))}
@@ -315,7 +334,7 @@ export default function Lounge() {
           ref={soundCloudIframeRef}
           title="SoundCloud player"
           className="lounge-soundcloud"
-          allow="autoplay"
+          allow="autoplay; encrypted-media"
         />
       </section>
 
@@ -327,7 +346,11 @@ export default function Lounge() {
         userId={user.id}
         playerName={playerName}
         jukeboxState={jukeboxState}
-        onQueued={(nextBalance) => wallet.setBalance(nextBalance)}
+        onQueued={(nextBalance, jukebox) => {
+          wallet.setBalance(nextBalance);
+          if (jukebox) applyJukeboxState(jukebox);
+        }}
+        onUserActivate={activateLoungeAudio}
       />
 
       <form className="lounge-chat card" onSubmit={handleChatSubmit}>
