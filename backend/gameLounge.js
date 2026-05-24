@@ -8,7 +8,8 @@ const WORLD = {
 };
 
 const PLAYER_SIZE = 26;
-const MESSAGE_MAX_LENGTH = 90;
+const MESSAGE_MAX_LENGTH = 50;
+const MESSAGE_TTL_MS = 5000;
 const CHAT_COOLDOWN_MS = 2500;
 const VAPE_COOLDOWN_MS = 900;
 const COLORS = ['#7c3aed', '#06b6d4', '#22c55e', '#f97316', '#ec4899', '#eab308', '#38bdf8'];
@@ -201,7 +202,7 @@ export function initGameLounge(httpServer, options) {
 
       player.lastChatAt = now;
       player.message = text;
-      player.messageUntil = now + 8000;
+      player.messageUntil = now + MESSAGE_TTL_MS;
       lounge.emit('chat:message', publicPlayer(player));
     });
 

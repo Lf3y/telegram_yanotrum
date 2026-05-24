@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_WORLD } from './constants';
 
 const TILE = 32;
+const BUBBLE_TTL_MS = 5000;
+const BUBBLE_MAX_WIDTH = 150;
 
 /**
  * Рисует пиксельный прямоугольник без сглаживания.
@@ -74,24 +76,64 @@ function drawRoom(ctx, world) {
 }
 
 /**
- * Рисует облако сообщения над игроком.
+ * Режет строку на несколько строк под ширину пузыря.
  * @param {CanvasRenderingContext2D} ctx
  * @param {string} text
+ * @param {number} maxWidth
+ * @returns {string[]}
+ */
+function wrapText(ctx, text, maxWidth) {
+  const words = String(text).split(' ');
+  const lines = [];
+  let current = '';
+
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      return;
+    }
+    if (current) lines.push(current);
+    current = word;
+  });
+
+  if (current) lines.push(current);
+  return lines.slice(0, 3);
+}
+
+/**
+ * Рисует облако сообщения над игроком.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {import('./useLoungeSocket').ChatBubble} bubble
  * @param {number} x
  * @param {number} y
+ * @param {number} stackIndex
  */
-function drawBubble(ctx, text, x, y) {
-  if (!text) return;
+function drawBubble(ctx, bubble, x, y, stackIndex) {
+  if (!bubble.text) return;
+  const now = Date.now();
+  const age = now - bubble.createdAt;
+  const progress = clamp(age / BUBBLE_TTL_MS, 0, 1);
+  const alpha = clamp((bubble.until - now) / 700, 0, 1);
+
   ctx.font = '700 13px Manrope, sans-serif';
   ctx.textAlign = 'left';
-  const width = Math.min(190, ctx.measureText(text).width + 22);
+  const lines = wrapText(ctx, bubble.text, BUBBLE_MAX_WIDTH - 22);
+  const width = Math.min(
+    BUBBLE_MAX_WIDTH,
+    Math.max(58, ...lines.map((line) => ctx.measureText(line).width + 22)),
+  );
+  const height = 18 + lines.length * 16;
   const bx = x - width / 2;
-  const by = y - 66;
-  pixelRect(ctx, bx, by, width, 30, 'rgba(9, 7, 18, 0.88)');
-  ctx.strokeStyle = 'rgba(124, 58, 237, 0.8)';
-  ctx.strokeRect(Math.round(bx) + 0.5, Math.round(by) + 0.5, Math.round(width), 30);
-  ctx.fillStyle = '#f8fafc';
-  ctx.fillText(text, bx + 11, by + 20, width - 18);
+  const by = y - 68 - stackIndex * (height + 8) - progress * 18;
+
+  pixelRect(ctx, bx, by, width, height, `rgba(9, 7, 18, ${0.88 * alpha})`);
+  ctx.strokeStyle = `rgba(124, 58, 237, ${0.8 * alpha})`;
+  ctx.strokeRect(Math.round(bx) + 0.5, Math.round(by) + 0.5, Math.round(width), Math.round(height));
+  ctx.fillStyle = `rgba(248, 250, 252, ${alpha})`;
+  lines.forEach((line, index) => {
+    ctx.fillText(line, bx + 11, by + 20 + index * 16, width - 18);
+  });
 }
 
 /**
@@ -125,9 +167,34 @@ function drawPlayer(ctx, player, isSelf) {
   ctx.fillStyle = isSelf ? '#facc15' : '#e5e7eb';
   ctx.fillText(player.name, x, y - 35, 130);
 
-  if (Date.now() < Number(player.messageUntil || 0)) {
-    drawBubble(ctx, player.message, x, y);
-  }
+}
+
+/**
+ * Рисует активные чат-баблы над игроками.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {import('./useLoungeSocket').ChatBubble[]} chatBubbles
+ * @param {Map<string, import('./useLoungeSocket').LoungePlayer>} playerMap
+ */
+function drawChatBubbles(ctx, chatBubbles, playerMap) {
+  const now = Date.now();
+  const byPlayer = new Map();
+
+  chatBubbles
+    .filter((bubble) => bubble.until > now)
+    .forEach((bubble) => {
+      const list = byPlayer.get(bubble.playerId) || [];
+      list.push(bubble);
+      byPlayer.set(bubble.playerId, list);
+    });
+
+  byPlayer.forEach((bubbles, playerId) => {
+    const player = playerMap.get(playerId);
+    if (!player) return;
+
+    bubbles
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .forEach((bubble, index) => drawBubble(ctx, bubble, player.x, player.y, index));
+  });
 }
 
 /**
@@ -158,10 +225,11 @@ function drawVape(ctx, events) {
  *   players: import('./useLoungeSocket').LoungePlayer[],
  *   selfId: string,
  *   world: { width: number, height: number, tile?: number },
- *   vapeEvents: import('./useLoungeSocket').VapeEvent[]
+ *   vapeEvents: import('./useLoungeSocket').VapeEvent[],
+ *   chatBubbles: import('./useLoungeSocket').ChatBubble[]
  * }} props
  */
-export function LoungeCanvas({ players, selfId, world, vapeEvents }) {
+export function LoungeCanvas({ players, selfId, world, vapeEvents, chatBubbles }) {
   const canvasRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0 });
   const [viewport, setViewport] = useState({ width: 640, height: 420, dpr: 1 });
@@ -217,9 +285,10 @@ export function LoungeCanvas({ players, selfId, world, vapeEvents }) {
       ctx.save();
       ctx.translate(-cameraRef.current.x, -cameraRef.current.y);
       drawRoom(ctx, safeWorld);
-      [...players]
-        .sort((a, b) => a.y - b.y)
-        .forEach((player) => drawPlayer(ctx, player, player.id === selfId));
+      const sortedPlayers = [...players].sort((a, b) => a.y - b.y);
+      const playerMap = new Map(sortedPlayers.map((player) => [player.id, player]));
+      sortedPlayers.forEach((player) => drawPlayer(ctx, player, player.id === selfId));
+      drawChatBubbles(ctx, chatBubbles, playerMap);
       drawVape(ctx, vapeEvents);
       ctx.restore();
 
@@ -228,7 +297,7 @@ export function LoungeCanvas({ players, selfId, world, vapeEvents }) {
 
     draw();
     return () => window.cancelAnimationFrame(frameId);
-  }, [players, safeWorld, selfId, vapeEvents, viewport]);
+  }, [chatBubbles, players, safeWorld, selfId, vapeEvents, viewport]);
 
   return (
     <canvas

@@ -59,6 +59,7 @@ export default function Lounge() {
     error,
     color,
     vapeEvents,
+    chatBubbles,
     sendMove,
     sendChat,
     sendVape,
@@ -252,7 +253,13 @@ export default function Lounge() {
 
       <section className="lounge-shell card">
         <div className="lounge-stage">
-          <LoungeCanvas players={renderedPlayers} selfId={selfId} world={world} vapeEvents={vapeEvents} />
+          <LoungeCanvas
+            players={renderedPlayers}
+            selfId={selfId}
+            world={world}
+            vapeEvents={vapeEvents}
+            chatBubbles={chatBubbles}
+          />
         </div>
 
         <div className="lounge-hud">
@@ -287,8 +294,8 @@ export default function Lounge() {
         <input
           value={chatText}
           onChange={(event) => setChatText(event.target.value)}
-          maxLength={90}
-          placeholder="Написать в лаунж..."
+          maxLength={50}
+          placeholder="Сообщение до 50 символов..."
         />
         <button type="submit" className="btn btn-primary">
           <Icon name="chat" size="xs" />

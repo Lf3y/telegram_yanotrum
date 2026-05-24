@@ -28,6 +28,15 @@ import { DEFAULT_WORLD, LOUNGE_COLORS } from './constants';
  */
 
 /**
+ * @typedef {Object} ChatBubble
+ * @property {string} id
+ * @property {string} playerId
+ * @property {string} text
+ * @property {number} createdAt
+ * @property {number} until
+ */
+
+/**
  * Достаёт сохранённый цвет персонажа.
  * @param {string | number} userId
  * @returns {string}
@@ -51,6 +60,7 @@ export function useLoungeSocket(user) {
   const [color, setColorState] = useState(() => loadColor(user.id));
   const initialColorRef = useRef(color);
   const [vapeEvents, setVapeEvents] = useState([]);
+  const [chatBubbles, setChatBubbles] = useState([]);
 
   useEffect(() => {
     const base = resolveApiBase() || window.location.origin;
@@ -99,7 +109,20 @@ export function useLoungeSocket(user) {
     });
 
     socket.on('chat:message', (player) => {
+      const now = Date.now();
       setPlayersById((prev) => ({ ...prev, [player.id]: player }));
+      if (player.message) {
+        setChatBubbles((prev) => [
+          ...prev.filter((bubble) => bubble.until > now).slice(-10),
+          {
+            id: `${player.id}:${now}`,
+            playerId: player.id,
+            text: String(player.message),
+            createdAt: now,
+            until: now + 5000,
+          },
+        ]);
+      }
     });
 
     socket.on('player:vape', (event) => {
@@ -112,6 +135,7 @@ export function useLoungeSocket(user) {
         delete next[id];
         return next;
       });
+      setChatBubbles((prev) => prev.filter((bubble) => bubble.playerId !== id));
     });
 
     return () => {
@@ -119,6 +143,14 @@ export function useLoungeSocket(user) {
       socketRef.current = null;
     };
   }, [user.first_name, user.id, user.last_name, user.username]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setChatBubbles((prev) => prev.filter((bubble) => bubble.until > now));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const players = useMemo(() => Object.values(playersById), [playersById]);
 
@@ -149,6 +181,7 @@ export function useLoungeSocket(user) {
     error,
     color,
     vapeEvents,
+    chatBubbles,
     sendMove,
     sendChat,
     sendVape,
