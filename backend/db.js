@@ -20,6 +20,8 @@ export let dialect = DATABASE_URL ? 'pg' : 'sqlite';
 let sqliteDb = null;
 /** @type {pg.Pool | null} */
 let pool = null;
+/** Не писать shop.db на диск между BEGIN и COMMIT */
+let sqliteInTransaction = false;
 
 function sqlPlaceholderToPg(sql) {
   let n = 0;
@@ -74,9 +76,9 @@ async function pgRun(sql, params = []) {
   if (isInsert && !/RETURNING\b/i.test(text)) text = `${text.trim().replace(/;+$/, '')} RETURNING id`;
   const r = await pool.query(text, params);
   if (isInsert && r.rows[0]?.id != null) {
-    return { lastInsertRowid: Number(r.rows[0].id) };
+    return { lastInsertRowid: Number(r.rows[0].id), changes: r.rowCount ?? 0 };
   }
-  return { lastInsertRowid: 0 };
+  return { lastInsertRowid: 0, changes: r.rowCount ?? 0 };
 }
 
 const PG_SCHEMA = `
@@ -127,8 +129,17 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT DEFAULT 'new',
   customer_note TEXT,
   owner_note TEXT,
+  stock_reserved INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS blocked_users (
+  id SERIAL PRIMARY KEY,
+  telegram_user_id TEXT UNIQUE NOT NULL,
+  reason TEXT,
+  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  blocked_by TEXT
 );
 `;
 
@@ -175,6 +186,10 @@ async function initPostgres() {
   pool = new pg.Pool(pgPoolConfig());
   await pool.query(PG_SCHEMA);
   await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS stock_reserved INTEGER DEFAULT 0
+  `).catch(() => {});
+  await pool.query(`
+    INSERT INTO categories (name, slug, emoji, description, sort_order, image_url)
     INSERT INTO categories (name, slug, emoji, description, sort_order, image_url)
     SELECT 'Картриджи', 'cartridges', '💨',
            'Раздел как у жидкостей: сначала бренд или навигация по каталогу категории.', 100, NULL
@@ -200,12 +215,21 @@ function sqliteGet(sql, params = []) {
   return sqliteAll(sql, params)[0] || null;
 }
 
-function sqliteRun(sql, params = []) {
-  sqliteDb.run(sql, params);
+function persistSqlite() {
+  if (!sqliteDb) return;
   const data = sqliteDb.export();
   fs.writeFileSync(DB_PATH, Buffer.from(data));
+}
+
+function sqliteRun(sql, params = []) {
+  sqliteDb.run(sql, params);
+  const changes = sqliteDb.getRowsModified();
   const res = sqliteDb.exec('SELECT last_insert_rowid()');
-  return { lastInsertRowid: res[0]?.values[0][0] };
+  const lastInsertRowid = res[0]?.values[0][0];
+  if (!sqliteInTransaction) {
+    persistSqlite();
+  }
+  return { lastInsertRowid, changes };
 }
 
 function hasColumnSQLite(table, column) {
@@ -296,6 +320,20 @@ async function initSqlite() {
       sqliteDb.run('UPDATE products SET stock_qty = CASE WHEN in_stock=0 THEN 0 ELSE -1 END');
     }
 
+    if (!hasColumnSQLite('orders', 'stock_reserved')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN stock_reserved INTEGER DEFAULT 0');
+    }
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS blocked_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_user_id TEXT UNIQUE NOT NULL,
+        reason TEXT,
+        blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        blocked_by TEXT
+      );
+    `);
+
     sqliteDb.run(`
       INSERT OR IGNORE INTO categories (name, slug, emoji, description, sort_order)
       VALUES ('Картриджи', 'cartridges', '💨',
@@ -333,6 +371,71 @@ export async function get(sql, params) {
 
 export async function run(sql, params) {
   return dialect === 'pg' ? pgRun(sql, params) : Promise.resolve(sqliteRun(sql, params || []));
+}
+
+/**
+ * Транзакция: fn получает тот же API { all, get, run }.
+ * @template T
+ * @param {(db: { all: typeof all, get: typeof get, run: typeof run }) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withTransaction(fn) {
+  if (dialect === 'pg') {
+    const client = await pool.connect();
+    const txAll = async (sql, params = []) => {
+      const r = await client.query(sqlPlaceholderToPg(sql), params);
+      return r.rows.map(normalizePgRow);
+    };
+    const txGet = async (sql, params = []) => {
+      const rows = await txAll(sql, params);
+      return rows[0] || null;
+    };
+    const txRun = async (sql, params = []) => {
+      const trimmed = sql.trim();
+      const isInsert = /^INSERT\s+/i.test(trimmed);
+      let text = sqlPlaceholderToPg(sql);
+      if (isInsert && !/RETURNING\b/i.test(text)) {
+        text = `${text.trim().replace(/;+$/, '')} RETURNING id`;
+      }
+      const r = await client.query(text, params);
+      if (isInsert && r.rows[0]?.id != null) {
+        return { lastInsertRowid: Number(r.rows[0].id), changes: r.rowCount ?? 0 };
+      }
+      return { lastInsertRowid: 0, changes: r.rowCount ?? 0 };
+    };
+    const db = { all: txAll, get: txGet, run: txRun };
+    try {
+      await client.query('BEGIN');
+      const result = await fn(db);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  sqliteInTransaction = true;
+  sqliteDb.run('BEGIN');
+  const db = {
+    all: (sql, params) => Promise.resolve(sqliteAll(sql, params || [])),
+    get: (sql, params) => Promise.resolve(sqliteGet(sql, params || [])),
+    run: (sql, params) => Promise.resolve(sqliteRun(sql, params || [])),
+  };
+  try {
+    const result = await fn(db);
+    sqliteDb.run('COMMIT');
+    persistSqlite();
+    return result;
+  } catch (e) {
+    sqliteDb.run('ROLLBACK');
+    persistSqlite();
+    throw e;
+  } finally {
+    sqliteInTransaction = false;
+  }
 }
 
 /** После массового импорта на Postgres связать brand_id с полем brand (та же логика, что при старте БД). */

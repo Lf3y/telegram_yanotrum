@@ -5,10 +5,12 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, all, get, run, dialect, slugify } from './db.js';
+import { initDb, all, get, run, dialect, slugify, withTransaction } from './db.js';
 import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
 import { transitionOrderStatus } from './orderStatus.js';
 import { runProductImport } from './importProducts.js';
+import { reserveStock } from './stock.js';
+import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -413,6 +415,8 @@ function parseCatalogFilters(q) {
   const nicotine = nicotineRaw !== '' ? nicotineRaw : null;
   const minP = Number.isFinite(Number(q.min_price)) ? Number(q.min_price) : null;
   const maxP = Number.isFinite(Number(q.max_price)) ? Number(q.max_price) : null;
+  const qRaw = q.q != null ? String(q.q).trim() : '';
+  const searchQuery = qRaw.length >= 2 ? qRaw : null;
 
   return {
     category,
@@ -422,6 +426,7 @@ function parseCatalogFilters(q) {
     maxPrice: maxP,
     producer,
     unbranded,
+    searchQuery,
   };
 }
 
@@ -459,6 +464,19 @@ function catalogExtraFiltersSql(columnAlias, parsed, opts = {}) {
   } else if (!opts.skipProducer && parsed.producer != null) {
     parts.push(`${br} = ?`);
     params.push(parsed.producer);
+  }
+
+  if (parsed.searchQuery) {
+    const pattern = `%${parsed.searchQuery}%`;
+    const descCol = `${columnAlias}.description`;
+    if (dialect === 'pg') {
+      parts.push(`(${columnAlias}.name ILIKE ? OR ${br} ILIKE ? OR COALESCE(${descCol}, '') ILIKE ?)`);
+    } else {
+      parts.push(
+        `(${columnAlias}.name LIKE ? COLLATE NOCASE OR ${br} LIKE ? COLLATE NOCASE OR COALESCE(${descCol}, '') LIKE ? COLLATE NOCASE)`,
+      );
+    }
+    params.push(pattern, pattern, pattern);
   }
 
   const sql = parts.length ? ` AND ${parts.join(' AND ')}` : '';
@@ -505,12 +523,13 @@ app.get('/api/catalog/brand-groups', async (req, res, next) => {
 
     const rows = await all(sqlText, paramsOut);
 
-    const data = rows.map((r) => {
+    let data = rows.map((r) => {
       const key = String(r.brand_raw || '').trim();
       return {
         brand: key || null,
         slug: slugify(key || '__no_brand__'),
         count: Number(r.cnt) || 0,
+        image_url: null,
       };
     });
 
@@ -521,6 +540,28 @@ app.get('/api/catalog/brand-groups', async (req, res, next) => {
       if (az !== bz) return az - bz;
       return b.count - a.count;
     });
+
+    if (parsed.category) {
+      const brandImages = await all(
+        `SELECT b.name, b.slug, b.image_url FROM brands b
+         JOIN categories c ON c.id = b.category_id
+         WHERE c.slug = ?`,
+        [parsed.category],
+      );
+      const bySlug = new Map(
+        brandImages.map((b) => [String(b.slug || '').trim(), b.image_url || null]),
+      );
+      const byName = new Map(
+        brandImages.map((b) => [String(b.name || '').trim().toLowerCase(), b.image_url || null]),
+      );
+      data = data.map((g) => ({
+        ...g,
+        image_url:
+          bySlug.get(g.slug)
+          || (g.brand ? byName.get(g.brand.toLowerCase()) : null)
+          || null,
+      }));
+    }
 
     res.json(data);
   } catch (e) {
@@ -666,6 +707,15 @@ app.post('/api/orders', async (req, res, next) => {
     const { telegram_user_id, telegram_username, telegram_first_name, items, customer_note } = req.body;
     if (!telegram_user_id || !items?.length) return res.status(400).json({ error: 'Missing fields' });
 
+    const userId = String(telegram_user_id);
+    const block = await getBlockStatus(userId);
+    if (block.blocked) {
+      return res.status(403).json({
+        error: blockedUserMessage(block.reason),
+        code: 'USER_BLOCKED',
+      });
+    }
+
     let total = 0;
     const enriched = [];
     for (const item of items) {
@@ -680,35 +730,49 @@ app.post('/api/orders', async (req, res, next) => {
         if (item.qty > sq) {
           return res.status(400).json({ error: `Недостаточно остатка: ${lineLabel} (доступно ${sq})` });
         }
-      } else {
-        if (!product.in_stock) {
-          return res.status(400).json({ error: `Товар недоступен: ${lineLabel}` });
-        }
+      } else if (!product.in_stock) {
+        return res.status(400).json({ error: `Товар недоступен: ${lineLabel}` });
       }
       total += product.price * item.qty;
       enriched.push({
         ...item,
         name: lineLabel,
-        /** Удобство для экспорта / отладки; в UI исторически уже используется `name`. */
         product_name: product.name,
         brand: product.brand || null,
         price: product.price,
       });
     }
 
-    const result = await run(
-      'INSERT INTO orders (telegram_user_id,telegram_username,telegram_first_name,items,total,customer_note) VALUES (?,?,?,?,?,?)',
-      [telegram_user_id, telegram_username || null, telegram_first_name || null, JSON.stringify(enriched), total, customer_note || null]
-    );
+    const orderPayload = await withTransaction(async (db) => {
+      const reserveItems = enriched.map((it) => ({
+        product_id: it.product_id,
+        qty: it.qty,
+      }));
+      const reserved = await reserveStock(db, reserveItems, formatOrderLineName);
+      if (!reserved.ok) {
+        const err = new Error(reserved.message || 'Недостаточно остатка');
+        err.code = reserved.code;
+        throw err;
+      }
 
-    /** Остатки списываются только при статусе «выдан» (см. orderStatus.transitionOrderStatus). */
+      const result = await db.run(
+        'INSERT INTO orders (telegram_user_id,telegram_username,telegram_first_name,items,total,customer_note,stock_reserved) VALUES (?,?,?,?,?,?,1)',
+        [userId, telegram_username || null, telegram_first_name || null, JSON.stringify(enriched), total, customer_note || null],
+      );
+      return { orderId: result.lastInsertRowid };
+    });
 
-    const order = await get('SELECT * FROM orders WHERE id=?', [result.lastInsertRowid]);
+    const order = await get('SELECT * FROM orders WHERE id=?', [orderPayload.orderId]);
     notifyOwner(OWNER_CHAT_ID, order, enriched);
-    notifyCustomer(telegram_user_id, order.id);
+    notifyCustomer(userId, order.id);
 
     res.json({ success: true, order_id: order.id, total });
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e?.code === 'INSUFFICIENT_STOCK' || e?.code === 'UNAVAILABLE') {
+      return res.status(400).json({ error: e.message, code: e.code });
+    }
+    next(e);
+  }
 });
 
 app.get('/api/orders/user/:telegramId', async (req, res, next) => {
@@ -820,6 +884,59 @@ app.delete('/api/admin/categories/:id', requireAdmin, async (req, res, next) => 
     }
     await run('DELETE FROM brands WHERE category_id=?', [id]);
     await run('DELETE FROM categories WHERE id=?', [id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/blocked-users', requireAdmin, async (_req, res, next) => {
+  try {
+    const rows = await all('SELECT * FROM blocked_users ORDER BY blocked_at DESC');
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/order-customers', requireAdmin, async (_req, res, next) => {
+  try {
+    const rows = await all(`
+      SELECT
+        telegram_user_id,
+        MAX(telegram_first_name) AS telegram_first_name,
+        MAX(telegram_username) AS telegram_username,
+        COUNT(*) AS order_count,
+        MAX(created_at) AS last_order_at
+      FROM orders
+      GROUP BY telegram_user_id
+      ORDER BY last_order_at DESC
+      LIMIT 200
+    `);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.post('/api/admin/blocked-users', requireAdmin, async (req, res, next) => {
+  try {
+    const { telegram_user_id, reason, blocked_by } = req.body || {};
+    const uid = String(telegram_user_id ?? '').trim();
+    if (!uid) return res.status(400).json({ error: 'Укажите telegram_user_id' });
+    await run(
+      `INSERT INTO blocked_users (telegram_user_id, reason, blocked_by)
+       VALUES (?,?,?)
+       ON CONFLICT(telegram_user_id) DO UPDATE SET
+         reason=excluded.reason,
+         blocked_by=excluded.blocked_by,
+         blocked_at=CURRENT_TIMESTAMP`,
+      [uid, reason ? String(reason).trim() : null, blocked_by ? String(blocked_by).trim() : 'admin'],
+    );
+    const row = await get('SELECT * FROM blocked_users WHERE telegram_user_id=?', [uid]);
+    res.json(row);
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/admin/blocked-users/:telegramUserId', requireAdmin, async (req, res, next) => {
+  try {
+    const uid = String(req.params.telegramUserId ?? '').trim();
+    if (!uid) return res.status(400).json({ error: 'Некорректный id' });
+    await run('DELETE FROM blocked_users WHERE telegram_user_id=?', [uid]);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

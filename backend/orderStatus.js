@@ -1,60 +1,11 @@
 /**
  * Переходы статуса заказа + остатки:
- * — при оформлении заказ остатки НЕ списываются;
- * — при переходе в done списываем stock_qty (если не безлимит −1);
- * — при переходе из done в cancelled возвращаем остатки;
- * — отмена из new/processing/replied не трогает склад (ничего не списали).
+ * — при оформлении заказа остатки резервируются (POST /api/orders, stock_reserved=1);
+ * — подтверждение / выдача — остатки уже списаны, ничего не делаем;
+ * — при отмене возвращаем остатки один раз (если stock_reserved=1).
  */
 import { get, run } from './db.js';
-
-async function deductStock(items) {
-  /** Сначала проверяем, что по каждой позиции хватает склада */
-  for (const item of items) {
-    const pid = item.product_id;
-    if (pid == null) continue;
-    const product = await get('SELECT id, name, stock_qty FROM products WHERE id=?', [pid]);
-    if (!product) continue;
-    const sq = product.stock_qty == null || product.stock_qty === undefined ? -1 : Number(product.stock_qty);
-    if (sq === -1) continue;
-    const qty = Number(item.qty) || 0;
-    if (qty < 1) continue;
-    if (sq < qty) {
-      return {
-        ok: false,
-        code: 'INSUFFICIENT_STOCK',
-        message: `Недостаточно «${product.name}»: нужно ${qty}, на складе ${sq}`,
-      };
-    }
-  }
-
-  for (const item of items) {
-    const pid = item.product_id;
-    if (pid == null) continue;
-    const product = await get('SELECT id, stock_qty FROM products WHERE id=?', [pid]);
-    if (!product) continue;
-    const sq = product.stock_qty == null || product.stock_qty === undefined ? -1 : Number(product.stock_qty);
-    if (sq === -1) continue;
-    const qty = Number(item.qty) || 0;
-    const nextQty = sq - qty;
-    await run('UPDATE products SET stock_qty=?, in_stock=? WHERE id=?', [nextQty, nextQty > 0 ? 1 : 0, pid]);
-  }
-
-  return { ok: true };
-}
-
-async function restoreStock(items) {
-  for (const item of items) {
-    const pid = item.product_id;
-    if (pid == null) continue;
-    const product = await get('SELECT id, stock_qty FROM products WHERE id=?', [pid]);
-    if (!product) continue;
-    const sq = product.stock_qty == null || product.stock_qty === undefined ? -1 : Number(product.stock_qty);
-    if (sq === -1) continue;
-    const qty = Number(item.qty) || 0;
-    const nextQty = sq + qty;
-    await run('UPDATE products SET stock_qty=?, in_stock=? WHERE id=?', [nextQty, 1, pid]);
-  }
-}
+import { restoreStock } from './stock.js';
 
 export async function transitionOrderStatus(orderId, nextStatus) {
   const id = Number(orderId);
@@ -80,11 +31,11 @@ export async function transitionOrderStatus(orderId, nextStatus) {
     return { ok: false, code: 'BAD_ITEMS', message: 'Некорректный состав заказа' };
   }
 
-  if (next === 'done' && prev !== 'done') {
-    const r = await deductStock(items);
-    if (!r.ok) return r;
-  } else if (next === 'cancelled' && prev === 'done') {
-    await restoreStock(items);
+  const stockReserved = Number(cur.stock_reserved) === 1;
+
+  if (next === 'cancelled' && prev !== 'cancelled' && stockReserved) {
+    await restoreStock({ get, run }, items);
+    await run('UPDATE orders SET stock_reserved=0 WHERE id=?', [id]);
   }
 
   await run('UPDATE orders SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [next, id]);

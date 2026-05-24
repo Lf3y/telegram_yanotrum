@@ -6,6 +6,7 @@ const NAV = [
   { to: '/import', label: 'Импорт Excel' },
   { to: '/products', label: 'Товары' },
   { to: '/orders', label: 'Заказы' },
+  { to: '/users', label: 'Блокировки' },
   { to: '/catalog', label: 'Витрина' },
 ];
 

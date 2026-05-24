@@ -40,7 +40,11 @@ export default function Cart() {
         setTimeout(() => navigate('/orders'), 2000);
       }
     } catch (e) {
-      alert(e?.message || 'Ошибка при оформлении заказа');
+      if (e?.code === 'USER_BLOCKED') {
+        alert(e.message || 'Доступ к заказам ограничен. Свяжитесь с магазином в Telegram.');
+      } else {
+        alert(e?.message || 'Ошибка при оформлении заказа');
+      }
     }
     setLoading(false);
   }

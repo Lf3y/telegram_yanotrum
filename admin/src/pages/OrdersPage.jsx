@@ -39,8 +39,8 @@ export default function OrdersPage() {
     <>
       <h1 className="h1">Заказы</h1>
       <p className="muted">
-        Под уведомлением о новом заказе в Telegram также есть кнопки «Выдан» и «Отменить» — остатки списываются при выдаче; при отмене сообщение в Telegram удаляется, заказ остаётся здесь.
-        Клиенту уходит уведомление при «Выдан» и «Отменён». Ответом на сообщение бота можно писать клиенту напрямую.
+        Остатки резервируются при оформлении заказа клиентом. При отмене — возвращаются на склад.
+        Кнопки «Выдан» / «Отменить» в Telegram и здесь работают одинаково. Клиенту уходит уведомление при «Выдан» и «Отменён».
       </p>
 
       <div className="row" style={{ marginTop: 12 }}>
@@ -107,13 +107,36 @@ export default function OrdersPage() {
                           type="button"
                           className="btn btn-sm btn-danger"
                           onClick={() => {
-                            if (!window.confirm('Отменить заказ и уведомить клиента?')) return;
+                            if (!window.confirm('Отменить заказ? Остатки вернутся на склад.')) return;
                             updateStatus(o.id, 'cancelled');
                           }}
                         >
                           Отменить
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        style={{ marginTop: 6 }}
+                        onClick={async () => {
+                          const reason = window.prompt('Причина блокировки (необязательно):') ?? '';
+                          try {
+                            await adminFetch('/api/admin/blocked-users', {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                telegram_user_id: o.telegram_user_id,
+                                reason: reason || null,
+                                blocked_by: 'admin',
+                              }),
+                            });
+                            alert('Пользователь заблокирован');
+                          } catch (e) {
+                            alert(e?.message || 'Ошибка');
+                          }
+                        }}
+                      >
+                        🚫 Заблокировать клиента
+                      </button>
                     </td>
                     <td>
                       <span className="badge badge-ok">{(o.items || []).length} поз.</span>

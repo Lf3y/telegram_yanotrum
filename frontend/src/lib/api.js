@@ -51,6 +51,12 @@ export async function apiFetch(pathname, init) {
       if (body && (body.error || body.message)) {
         hint = String(body.error || body.message);
       }
+      if (body?.code) {
+        const err = new Error(hint);
+        err.status = res.status;
+        err.code = body.code;
+        throw err;
+      }
     }
     const err = new Error(hint);
     err.status = res.status;

@@ -3,6 +3,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { formatByn } from './formatMoney.js';
 import { get, run } from './db.js';
 import { transitionOrderStatus } from './orderStatus.js';
+import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 
 let bot = null;
 
@@ -48,8 +49,18 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
   bot = new TelegramBot(token, { polling: !useWebhook });
 
   // /start command — send mini app button
-  bot.onText(/\/start/, (msg) => {
+  bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
+    const userId = String(msg.from?.id ?? chatId);
+    try {
+      const block = await getBlockStatus(userId);
+      if (block.blocked) {
+        await bot.sendMessage(chatId, `🚫 ${blockedUserMessage(block.reason)}`);
+        return;
+      }
+    } catch (e) {
+      console.error('/start block check:', e?.message || e);
+    }
     bot.sendMessage(chatId, '🛍 Добро пожаловать в Vape Shop!\n\nНажми кнопку ниже чтобы открыть магазин:', {
       reply_markup: {
         inline_keyboard: [[
@@ -111,7 +122,7 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
       }
 
       const base = query.message.text || '';
-      const suffix = '\n\n✅ Выдано: остатки списаны, клиент уведомлён.';
+      const suffix = '\n\n✅ Выдано: клиент уведомлён.';
       try {
         await bot.editMessageText(base + suffix, {
           chat_id: chatId,
@@ -222,7 +233,7 @@ export function notifyOwner(ownerChatId, order, items) {
     `💰 Итого: ${formatByn(order.total)}`,
     order.customer_note ? `📝 Комментарий клиента: ${order.customer_note}` : null,
     '',
-    'Ниже — кнопки: «Выдан» (списать остатки, клиенту уведомление) или «Отменить» (удалится это сообщение, заказ останется в истории и админке).',
+    'Ниже — кнопки: «Выдан» (клиенту уведомление) или «Отменить» (остатки вернутся на склад, сообщение удалится).',
     '',
     '⬆️ Ответьте на это сообщение — текст уйдёт клиенту в Telegram.',
   ];

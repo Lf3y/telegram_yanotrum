@@ -148,6 +148,7 @@ button, input, textarea, select { font: inherit; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; }
 .badge-new { background: rgba(var(--accent-rgb), 0.15); color: var(--accent2); }
 .badge-ok { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+.badge-bad { background: rgba(239, 68, 68, 0.12); color: var(--red); }
 .badge-warn { background: rgba(245, 158, 11, 0.12); color: var(--amber); }
 .kbd { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text2); }
 
