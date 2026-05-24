@@ -1988,6 +1988,7 @@ img { display: block; }
 /* ——— King Lounge ——— */
 .lounge-page {
   padding: 10px 12px 96px;
+  overscroll-behavior: none;
 }
 
 .lounge-header {
@@ -2021,6 +2022,9 @@ img { display: block; }
   padding: 0;
   border-color: rgba(var(--accent-rgb), 0.24);
   background: #100b1b;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
 }
 
 .lounge-stage {
@@ -2031,6 +2035,7 @@ img { display: block; }
   max-height: min(72vh, 720px);
   overflow: hidden;
   touch-action: none;
+  user-select: none;
   background: #100b1b;
 }
 
@@ -2039,6 +2044,8 @@ img { display: block; }
   height: 100%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  touch-action: none;
+  user-select: none;
 }
 
 .lounge-hud {
@@ -2064,6 +2071,9 @@ img { display: block; }
   box-shadow: inset 0 0 24px rgba(var(--accent-rgb), 0.18);
   pointer-events: auto;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .lounge-joystick::before {

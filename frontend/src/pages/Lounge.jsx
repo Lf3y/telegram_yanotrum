@@ -6,6 +6,7 @@ import { LoungeCanvas } from '../game/lounge/LoungeCanvas';
 import { VirtualJoystick } from '../game/lounge/VirtualJoystick';
 import { LOUNGE_COLORS, PLAYER_SPEED } from '../game/lounge/constants';
 import { useLoungeSocket } from '../game/lounge/useLoungeSocket';
+import { useLoungeAudio } from '../game/lounge/useLoungeAudio';
 
 /**
  * Ограничивает координату внутри комнаты.
@@ -48,7 +49,8 @@ function movementVector(joystick, keys) {
 }
 
 export default function Lounge() {
-  const { user } = useTelegram();
+  const { tg, user } = useTelegram();
+  const audio = useLoungeAudio();
   const {
     selfId,
     world,
@@ -71,6 +73,33 @@ export default function Lounge() {
   const selfPlayerRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const wasMovingRef = useRef(false);
+
+  useEffect(() => {
+    tg?.disableVerticalSwipes?.();
+
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overscrollBehavior = 'none';
+    document.body.style.touchAction = 'pan-x';
+
+    /**
+     * Не даём Telegram Mini App сворачивать экран при свайпе по игровой зоне.
+     * @param {TouchEvent} event
+     */
+    function preventGameSwipe(event) {
+      if (event.target instanceof Element && event.target.closest('.lounge-shell')) {
+        event.preventDefault();
+      }
+    }
+
+    document.addEventListener('touchmove', preventGameSwipe, { passive: false });
+    return () => {
+      tg?.enableVerticalSwipes?.();
+      document.body.style.overscrollBehavior = previousOverscroll;
+      document.body.style.touchAction = previousTouchAction;
+      document.removeEventListener('touchmove', preventGameSwipe);
+    };
+  }, [tg]);
 
   const selfPlayer = useMemo(
     () => players.find((player) => player.id === selfId),
@@ -140,6 +169,7 @@ export default function Lounge() {
         const moving = Math.abs(vector.x) + Math.abs(vector.y) > 0.01;
 
         if (moving) {
+          audio.play('step');
           position.x = clamp(position.x + vector.x * PLAYER_SPEED * dt, 38, world.width - 38);
           position.y = clamp(position.y + vector.y * PLAYER_SPEED * dt, 58, world.height - 44);
           position.direction = directionFromVector(vector);
@@ -182,8 +212,26 @@ export default function Lounge() {
     event.preventDefault();
     const text = chatText.trim();
     if (!text) return;
+    audio.play('chat');
     sendChat(text);
     setChatText('');
+  }
+
+  /**
+   * Меняет цвет персонажа со звуком.
+   * @param {string} nextColor
+   */
+  function handleColorChange(nextColor) {
+    audio.play('color');
+    setColor(nextColor);
+  }
+
+  /**
+   * Запускает анимацию дыма со звуком.
+   */
+  function handleVape() {
+    audio.play('vape');
+    sendVape();
   }
 
   return (
@@ -208,9 +256,14 @@ export default function Lounge() {
         </div>
 
         <div className="lounge-hud">
-          <VirtualJoystick onChange={(vector) => { joystickRef.current = vector; }} />
+          <VirtualJoystick
+            onStart={audio.unlock}
+            onChange={(vector) => {
+              joystickRef.current = vector;
+            }}
+          />
           <div className="lounge-actions">
-            <button type="button" className="lounge-action-btn" onClick={sendVape}>
+            <button type="button" className="lounge-action-btn" onClick={handleVape}>
               💨
               <span>Вейп</span>
             </button>
@@ -221,7 +274,7 @@ export default function Lounge() {
                   type="button"
                   className={`lounge-color${item === color ? ' lounge-color--active' : ''}`}
                   style={{ background: item }}
-                  onClick={() => setColor(item)}
+                  onClick={() => handleColorChange(item)}
                   aria-label={`Цвет ${item}`}
                 />
               ))}

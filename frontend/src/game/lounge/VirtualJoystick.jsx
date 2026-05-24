@@ -16,9 +16,9 @@ function clamp(value, min, max) {
 
 /**
  * Виртуальный джойстик для управления игроком на телефоне.
- * @param {{ onChange: (vector: { x: number, y: number }) => void }} props
+ * @param {{ onChange: (vector: { x: number, y: number }) => void, onStart?: () => void }} props
  */
-export function VirtualJoystick({ onChange }) {
+export function VirtualJoystick({ onChange, onStart }) {
   const rootRef = useRef(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
 
@@ -27,6 +27,7 @@ export function VirtualJoystick({ onChange }) {
    * @param {React.PointerEvent<HTMLDivElement>} event
    */
   function updatePointer(event) {
+    event.preventDefault();
     const rect = rootRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -56,14 +57,24 @@ export function VirtualJoystick({ onChange }) {
       ref={rootRef}
       className="lounge-joystick"
       onPointerDown={(event) => {
+        event.preventDefault();
+        onStart?.();
         event.currentTarget.setPointerCapture(event.pointerId);
         updatePointer(event);
       }}
       onPointerMove={(event) => {
+        event.preventDefault();
         if (event.currentTarget.hasPointerCapture(event.pointerId)) updatePointer(event);
       }}
-      onPointerUp={reset}
-      onPointerCancel={reset}
+      onPointerUp={(event) => {
+        event.preventDefault();
+        reset();
+      }}
+      onPointerCancel={(event) => {
+        event.preventDefault();
+        reset();
+      }}
+      onTouchMove={(event) => event.preventDefault()}
       role="application"
       aria-label="Джойстик движения"
     >
