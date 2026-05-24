@@ -706,6 +706,9 @@ img { display: block; }
   color: var(--text2);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+  /* Родитель .catalog-product-media отключает pointer-events для карточки */
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .favorite-btn--on {

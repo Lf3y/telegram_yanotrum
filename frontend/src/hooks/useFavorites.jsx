@@ -34,11 +34,19 @@ export function FavoritesProvider({ children }) {
 
   const toggle = useCallback(async (productId) => {
     const pid = Number(productId);
+    if (!Number.isFinite(pid)) {
+      throw new Error('Некорректный товар');
+    }
+    const userId = user?.id;
+    if (userId == null || userId === '') {
+      throw new Error('Не удалось определить пользователя Telegram');
+    }
+
     const res = await apiFetch('/api/favorites/toggle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        telegram_user_id: String(user.id),
+        telegram_user_id: String(userId),
         product_id: pid,
       }),
     });
@@ -50,7 +58,7 @@ export function FavoritesProvider({ children }) {
       return next;
     });
     return Boolean(data.favorited);
-  }, [user.id]);
+  }, [user?.id]);
 
   const isFavorite = useCallback(
     (productId) => ids.has(Number(productId)),
