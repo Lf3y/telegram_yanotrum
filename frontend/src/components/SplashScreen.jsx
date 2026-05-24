@@ -1,32 +1,14 @@
 import { useEffect } from 'react';
 
 const SPLASH_MS = 2000;
-const STORAGE_KEY = 'vape_shop_intro_seen';
-
-/** @returns {boolean} */
-export function shouldShowIntroSplash() {
-  if (typeof window === 'undefined') return false;
-  try {
-    return !window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return false;
-  }
-}
 
 /**
- * Одноразовый intro при первом открытии Mini App.
+ * Intro-загрузка при каждом открытии Mini App.
  * @param {{ onFinish: () => void }} props
  */
 export function SplashScreen({ onFinish }) {
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, '1');
-      } catch {
-        /** ignore */
-      }
-      onFinish();
-    }, SPLASH_MS);
+    const timer = window.setTimeout(onFinish, SPLASH_MS);
     return () => window.clearTimeout(timer);
   }, [onFinish]);
 

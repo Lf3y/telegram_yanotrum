@@ -21,7 +21,7 @@
   --radius-sm: 10px;
   --font-display: 'Unbounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --nav-count: 6;
+  --nav-count: 5;
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -509,6 +509,13 @@ img { display: block; }
   flex-direction: column;
   gap: 10px;
   margin-top: 22px;
+}
+
+.home-cta,
+.home-cta--secondary {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .home-cta--secondary {
@@ -1187,8 +1194,10 @@ img { display: block; }
   gap: 8px;
   padding: 14px 24px;
   border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   transition: all 0.2s;
   width: 100%;
 }

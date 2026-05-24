@@ -148,10 +148,6 @@ export default function Home() {
             <Icon name="heart-filled" size="sm" />
             <span className="home-cta-label">Избранное</span>
           </Link>
-          <Link to="/assistant" className="home-cta home-cta--secondary">
-            <Icon name="sparkles" size="sm" />
-            <span className="home-cta-label">Подобрать вкус с AI</span>
-          </Link>
         </div>
       </section>
     </div>

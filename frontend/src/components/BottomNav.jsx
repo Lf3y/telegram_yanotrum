@@ -6,7 +6,6 @@ const NAV = [
   { to: '/catalog', match: (p) => p.startsWith('/catalog'), label: 'Каталог', icon: 'grid' },
   { to: '/favorites', match: (p) => p === '/favorites', label: 'Избр.', icon: 'heart' },
   { to: '/cart', match: (p) => p === '/cart', label: 'Корзина', icon: 'cart' },
-  { to: '/assistant', match: (p) => p === '/assistant', label: 'AI', icon: 'ai' },
   { to: '/orders', match: (p) => p === '/orders', label: 'Заказы', icon: 'orders' },
 ];
 
@@ -49,13 +48,6 @@ function NavIcon({ name }) {
           <circle cx="9" cy="21" r="1" />
           <circle cx="20" cy="21" r="1" />
           <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-        </svg>
-      );
-    case 'ai':
-      return (
-        <svg {...common}>
-          <path d="M12 3l1.2 4.2L17.5 8.5l-4.3 1.2L12 14l-1.2-4.3L6.5 8.5l4.3-1.2L12 3z" fill="currentColor" stroke="none" />
-          <path d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14z" fill="currentColor" stroke="none" opacity="0.7" />
         </svg>
       );
     case 'orders':

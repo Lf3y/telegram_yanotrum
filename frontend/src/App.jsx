@@ -3,16 +3,15 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { CartProvider } from './store/cart';
 import { FavoritesProvider } from './hooks/useFavorites';
 import AppLayout from './components/AppLayout';
-import { SplashScreen, shouldShowIntroSplash } from './components/SplashScreen';
+import { SplashScreen } from './components/SplashScreen';
 import Home from './pages/Home';
 import Catalog from './pages/Catalog';
 import Cart from './pages/Cart';
 import Orders from './pages/Orders';
-import Assistant from './pages/Assistant';
 import Favorites from './pages/Favorites';
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(shouldShowIntroSplash);
+  const [showSplash, setShowSplash] = useState(true);
 
   const finishSplash = useCallback(() => {
     setShowSplash(false);
@@ -31,7 +30,6 @@ export default function App() {
               <Route path="/favorites" element={<Favorites />} />
               <Route path="/cart" element={<Cart />} />
               <Route path="/orders" element={<Orders />} />
-              <Route path="/assistant" element={<Assistant />} />
             </Route>
           </Routes>
         </BrowserRouter>
