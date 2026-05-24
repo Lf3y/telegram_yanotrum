@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 
 /**
@@ -47,6 +47,19 @@ export function JukeboxPanel({
   const [loading, setLoading] = useState(false);
   const [queueingId, setQueueingId] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const { overflow, touchAction } = document.body.style;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.touchAction = touchAction;
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -104,8 +117,17 @@ export function JukeboxPanel({
   }
 
   return (
-    <div className="lounge-jukebox-backdrop" role="dialog" aria-modal="true" aria-label="Музыкальная коробка">
-      <div className="lounge-jukebox card">
+    <div
+      className="lounge-jukebox-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Музыкальная коробка"
+      onTouchMove={(event) => event.stopPropagation()}
+    >
+      <div
+        className="lounge-jukebox card"
+        onTouchMove={(event) => event.stopPropagation()}
+      >
         <div className="lounge-jukebox-head">
           <div>
             <div className="lounge-jukebox-title">Музыкальная коробка</div>

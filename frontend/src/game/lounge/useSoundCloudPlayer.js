@@ -46,11 +46,18 @@ function loadSoundCloudApi() {
 /**
  * Синхронизирует общий SoundCloud-плеер лаунжа для всех игроков.
  * @param {JukeboxState | null} jukeboxState
+ * @param {{ onFinished?: () => void }} [options]
  */
-export function useSoundCloudPlayer(jukeboxState) {
+export function useSoundCloudPlayer(jukeboxState, options = {}) {
+  const onFinishedRef = useRef(options.onFinished);
   const iframeRef = useRef(null);
   const widgetRef = useRef(null);
-  const lastTrackIdRef = useRef('');
+  const lastTrackKeyRef = useRef('');
+  const finishedTrackKeyRef = useRef('');
+
+  useEffect(() => {
+    onFinishedRef.current = options.onFinished;
+  }, [options.onFinished]);
 
   useEffect(() => {
     loadSoundCloudApi().catch(() => {});
@@ -58,16 +65,35 @@ export function useSoundCloudPlayer(jukeboxState) {
 
   useEffect(() => {
     const track = jukeboxState?.track;
-    if (!track?.permalink || !iframeRef.current) return undefined;
+    if (!track?.permalink || !iframeRef.current) {
+      lastTrackKeyRef.current = '';
+      finishedTrackKeyRef.current = '';
+      widgetRef.current?.pause();
+      return undefined;
+    }
 
-    const trackKey = `${track.id}:${jukeboxState.startedAt}`;
-    if (lastTrackIdRef.current === trackKey) return undefined;
-    lastTrackIdRef.current = trackKey;
+    const startedAt = Number(jukeboxState.startedAt || 0);
+    const durationMs = Number(track.durationMs || 0);
+    const offsetMs = Math.max(0, Date.now() - startedAt);
+    const trackKey = `${track.id}:${startedAt}`;
 
+    if (durationMs > 0 && offsetMs >= durationMs) {
+      lastTrackKeyRef.current = '';
+      widgetRef.current?.pause();
+      onFinishedRef.current?.();
+      return undefined;
+    }
+
+    if (lastTrackKeyRef.current === trackKey && widgetRef.current) {
+      return undefined;
+    }
+
+    lastTrackKeyRef.current = trackKey;
+    finishedTrackKeyRef.current = '';
     let cancelled = false;
 
     /**
-     * Запускает трек в iframe SoundCloud.
+     * Запускает трек в iframe SoundCloud с синхронизацией по startedAt.
      */
     async function playTrack() {
       await loadSoundCloudApi();
@@ -75,18 +101,32 @@ export function useSoundCloudPlayer(jukeboxState) {
 
       const params = new URLSearchParams({
         url: track.permalink,
-        auto_play: 'true',
+        auto_play: 'false',
         hide_related: 'true',
         show_comments: 'false',
         show_user: 'false',
         show_reposts: 'false',
+        show_teaser: 'false',
         visual: 'false',
       });
 
       iframeRef.current.src = `https://w.soundcloud.com/player/?${params.toString()}`;
-      widgetRef.current = window.SC.Widget(iframeRef.current);
-      widgetRef.current.bind(window.SC.Widget.Events.READY, () => {
-        widgetRef.current?.play();
+      const widget = window.SC.Widget(iframeRef.current);
+      widgetRef.current = widget;
+
+      widget.bind(window.SC.Widget.Events.READY, () => {
+        if (cancelled) return;
+        if (offsetMs > 0) {
+          widget.seekTo(offsetMs);
+        }
+        widget.play();
+      });
+
+      widget.bind(window.SC.Widget.Events.FINISH, () => {
+        widget.pause();
+        if (finishedTrackKeyRef.current === trackKey) return;
+        finishedTrackKeyRef.current = trackKey;
+        onFinishedRef.current?.();
       });
     }
 

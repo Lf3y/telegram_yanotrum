@@ -1,5 +1,5 @@
 import { Server } from 'socket.io';
-import { getJukeboxState, setJukeboxBroadcast } from './loungeJukebox.js';
+import { getJukeboxState, setJukeboxBroadcast, clearJukeboxTrack } from './loungeJukebox.js';
 
 const WORLD = {
   width: 960,
@@ -233,6 +233,10 @@ export function initGameLounge(httpServer, options) {
         color: player.color,
         at: now,
       });
+    });
+
+    socket.on('jukebox:finished', () => {
+      clearJukeboxTrack();
     });
 
     socket.on('disconnect', () => {

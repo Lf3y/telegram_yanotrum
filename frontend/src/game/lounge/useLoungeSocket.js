@@ -172,6 +172,10 @@ export function useLoungeSocket(user) {
     socketRef.current?.emit('player:vape');
   }, []);
 
+  const sendJukeboxFinished = useCallback(() => {
+    socketRef.current?.emit('jukebox:finished');
+  }, []);
+
   const setColor = useCallback((nextColor) => {
     if (!LOUNGE_COLORS.includes(nextColor)) return;
     window.localStorage.setItem(`lounge-color:${user.id}`, nextColor);
@@ -192,6 +196,7 @@ export function useLoungeSocket(user) {
     sendMove,
     sendChat,
     sendVape,
+    sendJukeboxFinished,
     setColor,
   };
 }

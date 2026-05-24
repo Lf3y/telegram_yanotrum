@@ -22,6 +22,30 @@ let jukeboxState = {
   startedAt: 0,
 };
 
+/**
+ * @returns {JukeboxState}
+ */
+function emptyJukeboxState() {
+  return {
+    track: null,
+    queuedBy: '',
+    queuedByName: '',
+    startedAt: 0,
+  };
+}
+
+/**
+ * Проверяет, истёк ли трек по длительности.
+ * @param {JukeboxState} state
+ * @returns {boolean}
+ */
+function isJukeboxTrackExpired(state) {
+  if (!state.track) return false;
+  const durationMs = Number(state.track.durationMs || 0);
+  if (!durationMs) return false;
+  return Date.now() - Number(state.startedAt || 0) >= durationMs;
+}
+
 /** @type {((state: JukeboxState) => void) | null} */
 let broadcastHandler = null;
 
@@ -37,7 +61,19 @@ export function setJukeboxBroadcast(handler) {
  * @returns {JukeboxState}
  */
 export function getJukeboxState() {
+  if (isJukeboxTrackExpired(jukeboxState)) {
+    jukeboxState = emptyJukeboxState();
+  }
   return jukeboxState;
+}
+
+/**
+ * Очищает текущий трек в jukebox.
+ */
+export function clearJukeboxTrack() {
+  if (!jukeboxState.track) return;
+  jukeboxState = emptyJukeboxState();
+  broadcastHandler?.(jukeboxState);
 }
 
 /**

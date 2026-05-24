@@ -68,6 +68,7 @@ export default function Lounge() {
     sendMove,
     sendChat,
     sendVape,
+    sendJukeboxFinished,
     setColor,
   } = useLoungeSocket(user);
 
@@ -80,7 +81,9 @@ export default function Lounge() {
   const selfPlayerRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const wasMovingRef = useRef(false);
-  const soundCloudIframeRef = useSoundCloudPlayer(jukeboxState);
+  const soundCloudIframeRef = useSoundCloudPlayer(jukeboxState, {
+    onFinished: sendJukeboxFinished,
+  });
   const playerName = [user.first_name, user.last_name].filter(Boolean).join(' ')
     || user.username
     || 'Игрок';

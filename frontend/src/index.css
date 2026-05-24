@@ -2303,15 +2303,19 @@ img { display: block; }
   justify-content: center;
   padding: 16px 12px calc(88px + var(--safe-bottom, 0px));
   background: rgba(8, 6, 16, 0.72);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .lounge-jukebox {
   width: min(100%, 520px);
   max-height: min(72vh, 620px);
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 14px;
+  touch-action: pan-y;
 }
 
 .lounge-jukebox-head {
@@ -2320,6 +2324,7 @@ img { display: block; }
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .lounge-jukebox-title {
@@ -2351,6 +2356,7 @@ img { display: block; }
   border: 1px solid rgba(var(--accent-rgb), 0.18);
   font-size: 12px;
   color: var(--text2);
+  flex-shrink: 0;
 }
 
 .lounge-jukebox-search {
@@ -2358,6 +2364,7 @@ img { display: block; }
   grid-template-columns: 1fr auto;
   gap: 8px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .lounge-jukebox-search input {
@@ -2373,14 +2380,32 @@ img { display: block; }
 
 .lounge-jukebox-error {
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .lounge-jukebox-results {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-rgb), 0.35) transparent;
+}
+
+.lounge-jukebox-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lounge-jukebox-results::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.35);
 }
 
 .lounge-jukebox-empty {
@@ -2392,7 +2417,7 @@ img { display: block; }
 
 .lounge-jukebox-track {
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -2401,6 +2426,11 @@ img { display: block; }
   background: var(--bg3);
   text-align: left;
   color: var(--text);
+  flex-shrink: 0;
+}
+
+.lounge-jukebox-track-meta {
+  min-width: 0;
 }
 
 .lounge-jukebox-cover {
@@ -2422,12 +2452,18 @@ img { display: block; }
   font-size: 14px;
   font-weight: 800;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lounge-jukebox-track-artist {
   margin-top: 2px;
   font-size: 12px;
   color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lounge-jukebox-track-cost {
