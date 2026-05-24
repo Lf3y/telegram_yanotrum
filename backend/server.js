@@ -12,6 +12,7 @@ import { runProductImport } from './importProducts.js';
 import { reserveStock } from './stock.js';
 import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 import { adviseProducts } from './aiAdvisor.js';
+import { fetchExternalImage, parseAllowedImageUrl } from './mediaProxy.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -41,6 +42,24 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use('/uploads', express.static(UPLOADS_DIR));
+
+/** Прокси внешних картинок для Mini App (VK и др.) */
+app.get('/api/media', async (req, res, next) => {
+  try {
+    const raw = req.query.url;
+    if (!parseAllowedImageUrl(String(raw || ''))) {
+      return res.status(400).json({ error: 'Invalid or disallowed image URL' });
+    }
+    const { buffer, contentType } = await fetchExternalImage(String(raw));
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  } catch (e) {
+    if (e?.code === 'BAD_URL') return res.status(400).json({ error: e.message });
+    if (e?.code === 'UPSTREAM' || e?.code === 'NOT_IMAGE') return res.status(502).json({ error: e.message });
+    next(e);
+  }
+});
 
 function requireAdmin(req, res, next) {
   const token = req.header('x-admin-token');
@@ -584,17 +603,35 @@ app.get('/api/catalog/brand-groups', async (req, res, next) => {
          WHERE c.slug = ?`,
         [parsed.category],
       );
+      /** Первая картинка товара с фото по каждому бренду (fallback для плиток). */
+      const productThumbs = await all(
+        `SELECT TRIM(COALESCE(p.brand,'')) AS brand_raw,
+                MIN(p.image_url) AS image_url
+         FROM products p
+         JOIN categories c ON p.category_id = c.id
+         WHERE c.slug = ? AND ${avail}
+           AND p.image_url IS NOT NULL AND TRIM(p.image_url) <> ''
+         GROUP BY TRIM(COALESCE(p.brand,''))`,
+        [parsed.category],
+      );
       const bySlug = new Map(
         brandImages.map((b) => [String(b.slug || '').trim(), b.image_url || null]),
       );
       const byName = new Map(
         brandImages.map((b) => [String(b.name || '').trim().toLowerCase(), b.image_url || null]),
       );
+      const byProductBrand = new Map(
+        productThumbs.map((r) => [
+          String(r.brand_raw || '').trim().toLowerCase(),
+          r.image_url || null,
+        ]),
+      );
       data = data.map((g) => ({
         ...g,
         image_url:
           bySlug.get(g.slug)
           || (g.brand ? byName.get(g.brand.toLowerCase()) : null)
+          || (g.brand ? byProductBrand.get(g.brand.toLowerCase()) : null)
           || null,
       }));
     }

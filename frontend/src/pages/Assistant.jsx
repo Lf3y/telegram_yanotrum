@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, resolveImageUrl } from '../lib/api';
+import { formatByn } from '../lib/money';
+import { useCart } from '../store/cart';
+import { Icon, ProductImage } from '../components/icons';
 
 const QUICK_PROMPTS = [
   'Сладкий фруктовый вкус с лёгким холодком',

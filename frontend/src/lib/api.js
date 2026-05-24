@@ -28,7 +28,7 @@ export function apiUrl(pathname) {
 }
 
 /**
- * Абсолютный URL картинки: /uploads/... и localhost → API base.
+ * Абсолютный URL картинки: /uploads, localhost и внешние (VK) через API.
  * @param {string|null|undefined} url
  * @returns {string}
  */
@@ -37,12 +37,37 @@ export function resolveImageUrl(url) {
   const s = String(url).trim();
   if (!s) return '';
   const base = resolveApiBase();
+
   if (/^https?:\/\//i.test(s)) {
     if (base && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(s)) {
       return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base);
     }
+    if (base && s.includes('/uploads/')) {
+      try {
+        const u = new URL(s);
+        if (u.pathname.startsWith('/uploads/')) {
+          return `${base}${u.pathname}${u.search || ''}`;
+        }
+      } catch {
+        /** ignore */
+      }
+    }
+    if (base) {
+      try {
+        const u = new URL(s);
+        const host = u.hostname.toLowerCase();
+        const isOwnApi = base.includes(host);
+        const isUploadPath = u.pathname.startsWith('/uploads/');
+        if (!isOwnApi && !isUploadPath) {
+          return `${base}/api/media?url=${encodeURIComponent(s)}`;
+        }
+      } catch {
+        /** ignore */
+      }
+    }
     return s;
   }
+
   if (s.startsWith('/') && base) return `${base}${s}`;
   return s;
 }
