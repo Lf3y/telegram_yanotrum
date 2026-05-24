@@ -205,6 +205,18 @@ async function initPostgres() {
   await pool.query(`
     ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_qty INTEGER DEFAULT -1
   `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE categories ADD COLUMN IF NOT EXISTS image_url TEXT
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE categories ADD COLUMN IF NOT EXISTS description TEXT
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE brands ADD COLUMN IF NOT EXISTS image_url TEXT
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT
+  `).catch(() => {});
   await syncPgBrandsFromProductNames();
   console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
 }

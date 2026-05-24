@@ -1,7 +1,8 @@
 /**
- * Только загрузка файла на бэкенд. В БД в поле image_url хранится URL вида
- * https://.../uploads/xxx.jpg (файл на диске сервера, в БД — ссылка на него).
+ * Загрузка файла на бэкенд (Cloudinary на проде, локально — uploads/).
  */
+import { resolveMediaUrl } from '../lib/media';
+
 export default function ImageUploadField({
   previewUrl,
   file,
@@ -12,13 +13,14 @@ export default function ImageUploadField({
   disabled,
   label = 'Картинка',
 }) {
+  const previewSrc = resolveMediaUrl(previewUrl);
   return (
     <div className="field span-2">
       <span className="label">{label}</span>
-      {previewUrl ? (
+      {previewSrc ? (
         <div className="row" style={{ alignItems: 'center', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
           <div className="thumb" style={{ width: 80, height: 56, borderRadius: 10 }}>
-            <img src={previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={previewSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           {onClear && (
             <button type="button" className="btn btn-sm btn-ghost" onClick={onClear} disabled={disabled}>
@@ -41,7 +43,7 @@ export default function ImageUploadField({
         </button>
       </div>
       <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
-        Файл сохраняется в папке <code>uploads/</code> на сервере; в БД в поле <code>image_url</code> хранится адрес этого файла (не картинка внутри SQL).
+        Выбери файл и нажми «Загрузить». Для существующей категории/бренда фото сохранится в базу сразу.
       </p>
     </div>
   );

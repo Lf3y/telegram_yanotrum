@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminFetch, adminUpload } from '../lib/api';
+import { resolveMediaUrl } from '../lib/media';
 import ImageUploadField from '../components/ImageUploadField';
 import { formatByn } from '../lib/money';
 
@@ -15,8 +16,39 @@ function slugify(input) {
 }
 
 function Thumb({ url }) {
-  if (!url) return <div className="thumb" />;
-  return <div className="thumb"><img src={url} alt="" loading="lazy" /></div>;
+  const src = resolveMediaUrl(url);
+  if (!src) return <div className="thumb" />;
+  return <div className="thumb"><img src={src} alt="" loading="lazy" /></div>;
+}
+
+/** @param {Record<string, unknown>} category */
+function categoryPayload(category) {
+  return {
+    name: String(category.name || '').trim(),
+    slug: (String(category.slug || '').trim() || slugify(category.name)).trim(),
+    emoji: String(category.emoji || '').trim() || '🛍',
+    description: category.description != null ? String(category.description).trim() || null : null,
+    sort_order: (() => {
+      const n = Number(category.sort_order);
+      return Number.isFinite(n) ? n : 0;
+    })(),
+    image_url: category.image_url != null && String(category.image_url).trim()
+      ? String(category.image_url).trim()
+      : null,
+  };
+}
+
+/** @param {Record<string, unknown>} brand */
+function brandPayload(brand) {
+  return {
+    category_id: Number(brand.category_id),
+    name: String(brand.name || '').trim(),
+    slug: (String(brand.slug || '').trim() || slugify(brand.name)).trim(),
+    image_url: brand.image_url != null && String(brand.image_url).trim()
+      ? String(brand.image_url).trim()
+      : null,
+    sort_order: Number(brand.sort_order || 0),
+  };
 }
 
 const TABS = [
@@ -28,6 +60,7 @@ const TABS = [
 export default function CatalogPage() {
   const [tab, setTab] = useState('categories');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [activeCat, setActiveCat] = useState('');
@@ -113,14 +146,51 @@ export default function CatalogPage() {
   async function doUpload(file, which) {
     if (!file) { setError('Выбери файл'); return; }
     setError('');
+    setSuccess('');
     setUp(s => ({ ...s, [which]: true }));
     try {
       const r = await adminUpload(file);
-      if (which === 'c') setNewCat(s => ({ ...s, image_url: r.url }));
-      if (which === 'b') setNewBrand(s => ({ ...s, image_url: r.url }));
-      if (which === 'p') setNewProd(s => ({ ...s, image_url: r.url }));
-      if (which === 'ec') setEditingCategory(s => (s ? { ...s, image_url: r.url } : s));
-      if (which === 'eb') setEditingBrand(s => (s ? { ...s, image_url: r.url } : s));
+      const url = r?.url ? String(r.url) : '';
+      if (!url) throw new Error('Сервер не вернул URL картинки');
+
+      if (which === 'c') {
+        setNewCat(s => ({ ...s, image_url: url }));
+        setSuccess('Фото загружено. Нажми «Добавить категорию», чтобы сохранить.');
+      }
+      if (which === 'b') {
+        setNewBrand(s => ({ ...s, image_url: url }));
+        setSuccess('Фото загружено. Нажми «Добавить бренд», чтобы сохранить.');
+      }
+      if (which === 'p') {
+        setNewProd(s => ({ ...s, image_url: url }));
+        setSuccess('Фото загружено. Нажми «Добавить товар», чтобы сохранить.');
+      }
+
+      if (which === 'ec' && editingCategory?.id) {
+        const saved = await adminFetch(`/api/admin/categories/${editingCategory.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...categoryPayload(editingCategory), image_url: url }),
+        });
+        setEditingCategory(saved);
+        await reloadCategories();
+        setSuccess(`Картинка категории «${saved.name}» сохранена`);
+        setFileEditCat(null);
+      } else if (which === 'ec') {
+        setEditingCategory(s => (s ? { ...s, image_url: url } : s));
+      }
+
+      if (which === 'eb' && editingBrand?.id) {
+        const saved = await adminFetch(`/api/admin/brands/${editingBrand.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...brandPayload(editingBrand), image_url: url }),
+        });
+        setEditingBrand(saved);
+        await reloadBrandsForCat();
+        setSuccess(`Картинка бренда «${saved.name}» сохранена`);
+        setFileEditBrand(null);
+      } else if (which === 'eb') {
+        setEditingBrand(s => (s ? { ...s, image_url: url } : s));
+      }
     } catch (e) {
       setError(e?.message || 'Ошибка загрузки');
     } finally {
@@ -158,12 +228,15 @@ export default function CatalogPage() {
       {error && (
         <div className="card" style={{ marginTop: 14, borderColor: 'rgba(255,45,45,0.3)', background: 'rgba(255,45,45,0.08)' }}>{error}</div>
       )}
+      {success && (
+        <div className="card" style={{ marginTop: 14, borderColor: 'rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.1)' }}>{success}</div>
+      )}
 
       {/* ——— Категории ——— */}
       {tab === 'categories' && (
         <div className="list-panel">
           <p className="section-hint" style={{ marginTop: 16 }}>
-            Разделы магазина на главной. Укажи <strong>slug</strong> латиницей (например <code>liquids</code>) — по нему строятся ссылки в каталоге.
+            Разделы магазина на главной. У существующей категории: <strong>Изменить</strong> → выбери файл → <strong>Загрузить</strong> (сохранится сразу).
           </p>
 
           <div className="form-panel">
@@ -204,16 +277,11 @@ export default function CatalogPage() {
                   try {
                     await adminFetch('/api/admin/categories', {
                       method: 'POST',
-                      body: JSON.stringify({
-                        name: newCat.name.trim(),
-                        slug: (newCat.slug || slugify(newCat.name)).trim(),
-                        emoji: newCat.emoji || '🛍',
-                        description: newCat.description?.trim() || null,
-                        sort_order: 0,
-                        image_url: newCat.image_url?.trim() || null,
-                      }),
+                      body: JSON.stringify(categoryPayload(newCat)),
                     });
                     setNewCat({ name: '', slug: '', emoji: '🛍', description: '', image_url: '' });
+                    setFileCat(null);
+                    setSuccess('Категория добавлена');
                     await reloadCategories();
                   } catch (e) { setError(e?.message); }
                 }}
@@ -263,22 +331,11 @@ export default function CatalogPage() {
                     try {
                       await adminFetch(`/api/admin/categories/${editingCategory.id}`, {
                         method: 'PUT',
-                        body: JSON.stringify({
-                          name: editingCategory.name?.trim(),
-                          slug: (editingCategory.slug || slugify(editingCategory.name)).trim(),
-                          emoji: editingCategory.emoji?.trim() || '🛍',
-                          description: editingCategory.description?.trim() || null,
-                          sort_order: (() => {
-                            const r = editingCategory.sort_order;
-                            if (r === '' || r == null) return 0;
-                            const n = Number(r);
-                            return Number.isFinite(n) ? n : 0;
-                          })(),
-                          image_url: editingCategory.image_url?.trim() || null,
-                        }),
+                        body: JSON.stringify(categoryPayload(editingCategory)),
                       });
                       setEditingCategory(null);
                       setFileEditCat(null);
+                      setSuccess('Категория сохранена');
                       await reloadCategories();
                     } catch (e) { setError(e?.message); }
                   }}

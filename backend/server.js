@@ -247,9 +247,9 @@ app.get('/api/categories', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.get('/api/admin/categories', requireAdmin, async (_req, res, next) => {
+app.get('/api/admin/categories', requireAdmin, async (req, res, next) => {
   try {
-    res.json(await all('SELECT * FROM categories ORDER BY sort_order, name'));
+    res.json(withNormalizedImagesList(await all('SELECT * FROM categories ORDER BY sort_order, name'), req));
   } catch (e) { next(e); }
 });
 
