@@ -25,7 +25,8 @@ async function ensureWalletInDb(telegramUserId, db) {
   await db.run(
     `INSERT INTO user_wallets (telegram_user_id, balance)
      VALUES (?, 0)
-     ON CONFLICT(telegram_user_id) DO NOTHING`,
+     ON CONFLICT(telegram_user_id) DO NOTHING
+     RETURNING telegram_user_id`,
     [uid],
   );
 }
