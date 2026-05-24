@@ -2178,16 +2178,80 @@ img { display: block; }
   }
 
   .lounge-page {
+    display: flex;
+    flex-direction: column;
     padding-left: 8px;
     padding-right: 8px;
+    padding-bottom: 88px;
+  }
+
+  .lounge-header {
+    padding-bottom: 8px;
   }
 
   .lounge-stage {
-    min-height: 620px;
-    max-height: 74vh;
+    aspect-ratio: auto;
+    height: min(56vh, 500px);
+    min-height: 390px;
+    max-height: none;
+  }
+
+  .lounge-hud {
+    bottom: 30px;
+    padding: 10px 12px;
+  }
+
+  .lounge-joystick {
+    width: 108px;
+    height: 108px;
+  }
+
+  .lounge-joystick::before {
+    inset: 24px;
+  }
+
+  .lounge-joystick-knob {
+    width: 40px;
+    height: 40px;
+  }
+
+  .lounge-action-btn {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
+    font-size: 21px;
+  }
+
+  .lounge-actions {
+    gap: 8px;
+  }
+
+  .lounge-colors {
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .lounge-color {
+    width: 19px;
+    height: 19px;
   }
 
   .lounge-chat {
     grid-template-columns: 1fr;
+    gap: 7px;
+    margin-top: 8px;
+    padding: 8px;
+    position: sticky;
+    bottom: calc(76px + var(--safe-bottom, 0px));
+    z-index: 5;
+    box-shadow: 0 -12px 28px rgba(0,0,0,0.22);
+  }
+
+  .lounge-chat input {
+    height: 40px;
+  }
+
+  .lounge-chat .btn {
+    min-height: 40px;
   }
 }
