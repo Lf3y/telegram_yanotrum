@@ -21,6 +21,7 @@ import { FavoriteButton } from '../components/FavoriteButton';
  *   filters: {
  *     minPrice?: string,
  *     maxPrice?: string,
+ *     volume?: string,
  *     nicotine?: string,
  *   },
  * }} cfg
@@ -36,6 +37,7 @@ function productsQuery(cfg) {
 
   if (fp.minPrice?.trim()) q.set('min_price', fp.minPrice.trim());
   if (fp.maxPrice?.trim()) q.set('max_price', fp.maxPrice.trim());
+  if (fp.volume?.trim()) q.set('volume', fp.volume.trim());
   if (fp.nicotine?.trim()) q.set('nicotine', fp.nicotine.trim());
   if (cfg.searchQuery?.trim() && cfg.searchQuery.trim().length >= 2) {
     q.set('q', cfg.searchQuery.trim());
@@ -57,7 +59,7 @@ function filtersMetaUrl(categorySlug) {
 
 /**
  * @param {string} categorySlug
- * @param {{ minPrice?: string, maxPrice?: string, nicotine?: string }} filters
+ * @param {{ minPrice?: string, maxPrice?: string, volume?: string, nicotine?: string }} filters
  * @param {string} searchQuery
  */
 function brandGroupsUrl(categorySlug, filters = {}, searchQuery = '') {
@@ -65,9 +67,11 @@ function brandGroupsUrl(categorySlug, filters = {}, searchQuery = '') {
   q.set('category', categorySlug);
   const fpMin = filters.minPrice?.trim();
   const fpMax = filters.maxPrice?.trim();
+  const vol = filters.volume?.trim();
   const nic = filters.nicotine?.trim();
   if (fpMin) q.set('min_price', fpMin);
   if (fpMax) q.set('max_price', fpMax);
+  if (vol) q.set('volume', vol);
   if (nic) q.set('nicotine', nic);
   if (searchQuery.trim().length >= 2) q.set('q', searchQuery.trim());
   return `/api/catalog/brand-groups?${q.toString()}`;
@@ -389,12 +393,14 @@ export default function Catalog() {
   const [filters, setFilters] = useState({
     minPrice: '',
     maxPrice: '',
+    volume: '',
     nicotine: '',
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterMeta, setFilterMeta] = useState(() => ({
     priceMin: 0,
     priceMax: 0,
+    volumeValues: /** @type {string[]} */ ([]),
     nicotineValues: /** @type {string[]} */ ([]),
   }));
 
@@ -432,7 +438,7 @@ export default function Catalog() {
     if (!categorySlug) return;
     setSearchInput('');
     setDebouncedSearch('');
-    setFilters({ minPrice: '', maxPrice: '', nicotine: '' });
+    setFilters({ minPrice: '', maxPrice: '', volume: '', nicotine: '' });
     setFiltersOpen(false);
   }, [categorySlug]);
 
@@ -444,6 +450,7 @@ export default function Catalog() {
         setFilterMeta({
           priceMin: typeof m.priceMin === 'number' ? m.priceMin : 0,
           priceMax: typeof m.priceMax === 'number' ? m.priceMax : 0,
+          volumeValues: Array.isArray(m.volumeValues) ? m.volumeValues : [],
           nicotineValues: Array.isArray(m.nicotineValues) ? m.nicotineValues : [],
         }),
       )
@@ -575,7 +582,7 @@ export default function Catalog() {
     setSearchParams({ all: '1' });
   }, [setSearchParams]);
 
-  const hasActiveFilters = Boolean(filters.minPrice || filters.maxPrice || filters.nicotine);
+  const hasActiveFilters = Boolean(filters.minPrice || filters.maxPrice || filters.volume || filters.nicotine);
 
   return (
     <div className="page catalog-page">
@@ -679,6 +686,20 @@ export default function Catalog() {
             </div>
 
             <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 6 }}>Объём</div>
+              <select
+                value={filters.volume}
+                onChange={(ev) => setFilters((f) => ({ ...f, volume: ev.target.value }))}
+                className="catalog-filter-select"
+              >
+                <option value="">Любой</option>
+                {filterMeta.volumeValues.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 6 }}>Никотин</div>
               <select
                 value={filters.nicotine}
@@ -696,7 +717,7 @@ export default function Catalog() {
               type="button"
               className="btn btn-outline"
               style={{ width: '100%', padding: '12px', touchAction: 'manipulation' }}
-              onClick={() => setFilters({ minPrice: '', maxPrice: '', nicotine: '' })}
+              onClick={() => setFilters({ minPrice: '', maxPrice: '', volume: '', nicotine: '' })}
             >
               Сбросить фильтры
             </button>

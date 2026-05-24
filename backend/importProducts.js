@@ -14,6 +14,17 @@ const HEADER_ALIASES = {
   old_price: ['старая цена', 'old_price', 'old', 'зачеркнутая'],
   volume: ['объём', 'объем', 'volume', 'мл', 'capacity'],
   nicotine: ['никотин', 'nicotine', 'крепость', 'мг', 'mg'],
+  volume_nicotine: [
+    'объём / никотин',
+    'объем / никотин',
+    'объём/никотин',
+    'объем/никотин',
+    'объем и никотин',
+    'объём и никотин',
+    'volume / nicotine',
+    'volume/nicotine',
+    'volume nicotine',
+  ],
   stock_qty: ['остаток', 'stock', 'stock_qty', 'количество', 'кол-во', 'qty', 'шт'],
   in_stock: ['в наличии', 'in_stock', 'доступен'],
   description: ['описание', 'description', 'примечание', 'комментарий'],
@@ -93,6 +104,30 @@ function parseInStock(v, stockQty) {
   return n === 0 ? 0 : 1;
 }
 
+/**
+ * Разбирает общую колонку Excel вида "60ml, 3мг" в отдельные поля карточки.
+ * @param {unknown} value
+ * @returns {{ volume?: string|null, nicotine?: string|null }}
+ */
+function parseVolumeNicotine(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return {};
+
+  const parts = text
+    .split(/[;,|/]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return { volume: parts[0] || null, nicotine: parts.slice(1).join(', ') || null };
+  }
+
+  const lower = text.toLowerCase();
+  if (/(мг|mg|никот|креп)/i.test(lower) && !/(мл|ml|объ[её]м|volume)/i.test(lower)) {
+    return { nicotine: text };
+  }
+  return { volume: text };
+}
+
 function extractRow(raw, fieldMap) {
   const gv = canon => {
     const sk = fieldMap[canon];
@@ -105,6 +140,15 @@ function extractRow(raw, fieldMap) {
   const cat = gv('category');
   const nm = gv('name');
   const pr = gv('price');
+  const volumeCell = gv('volume');
+  const nicotineCell = gv('nicotine');
+  const volumeNicotineCell = gv('volume_nicotine');
+  const combinedVolumeNicotine = (() => {
+    if (volumeNicotineCell.has) return parseVolumeNicotine(volumeNicotineCell.v);
+    if (volumeCell.has && !nicotineCell.has) return parseVolumeNicotine(volumeCell.v);
+    return {};
+  })();
+  const combinedHasNicotine = combinedVolumeNicotine.nicotine !== undefined;
 
   return {
     category: cat.has ? String(cat.v ?? '').trim() : null,
@@ -120,12 +164,15 @@ function extractRow(raw, fieldMap) {
       return x.has ? parseNumberPrice(x.v) : undefined;
     })(),
     volume: (() => {
-      const x = gv('volume');
-      return x.has ? String(x.v ?? '').trim() || null : undefined;
+      if (volumeCell.has) {
+        if (combinedHasNicotine) return combinedVolumeNicotine.volume ?? null;
+        return String(volumeCell.v ?? '').trim() || null;
+      }
+      return fieldMap.volume_nicotine ? combinedVolumeNicotine.volume ?? null : undefined;
     })(),
     nicotine: (() => {
-      const x = gv('nicotine');
-      return x.has ? String(x.v ?? '').trim() || null : undefined;
+      if (nicotineCell.has) return String(nicotineCell.v ?? '').trim() || null;
+      return fieldMap.volume_nicotine || combinedHasNicotine ? combinedVolumeNicotine.nicotine ?? null : undefined;
     })(),
     stock_qty: (() => {
       const x = gv('stock_qty');
@@ -165,8 +212,8 @@ function extractRow(raw, fieldMap) {
     _hasDescriptionColumn: !!fieldMap.description,
     _hasOldPriceColumn: !!fieldMap.old_price,
     _hasSortOrderColumn: !!fieldMap.sort_order,
-    _hasVolumeColumn: !!fieldMap.volume,
-    _hasNicotineColumn: !!fieldMap.nicotine,
+    _hasVolumeColumn: !!fieldMap.volume || !!fieldMap.volume_nicotine,
+    _hasNicotineColumn: !!fieldMap.nicotine || !!fieldMap.volume_nicotine || combinedHasNicotine,
     _hasStockColumn: !!fieldMap.stock_qty,
     _hasInStockColumn: !!fieldMap.in_stock,
   };

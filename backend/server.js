@@ -475,6 +475,17 @@ function sqlNicotineKey(alias = 'p') {
     : `NULLIF(TRIM(COALESCE(${a}nicotine, '')), '')`;
 }
 
+/**
+ * Нормализованное выражение объёма в SQL (distinct / фильтр).
+ * @param {string} alias
+ */
+function sqlVolumeKey(alias = 'p') {
+  const a = alias ? `${alias}.` : '';
+  return dialect === 'pg'
+    ? `NULLIF(TRIM(COALESCE(${a}volume::text, '')), '')`
+    : `NULLIF(TRIM(COALESCE(${a}volume, '')), '')`;
+}
+
 /** Строковое значение производителя (поле brand в products). */
 function sqlBrandTrim(alias = 'p') {
   const a = alias ? `${alias}.` : '';
@@ -493,6 +504,8 @@ function parseCatalogFilters(q) {
   const producer = producerTrim !== '' ? producerTrim : null;
   /** Только SKU без указанного бренда (`products.brand` пусто). */
   const unbranded = q.unbranded === '1' || q.unbranded === 'true';
+  const volumeRaw = q.volume != null ? String(q.volume).trim() : '';
+  const volume = volumeRaw !== '' ? volumeRaw : null;
   const nicotineRaw = q.nicotine != null ? String(q.nicotine).trim() : '';
   const nicotine = nicotineRaw !== '' ? nicotineRaw : null;
   const minP = Number.isFinite(Number(q.min_price)) ? Number(q.min_price) : null;
@@ -503,6 +516,7 @@ function parseCatalogFilters(q) {
   return {
     category,
     brandSlugFromTable,
+    volume,
     nicotine,
     minPrice: minP,
     maxPrice: maxP,
@@ -518,6 +532,7 @@ function parseCatalogFilters(q) {
  * @param {{
  *   minPrice?: number|null,
  *   maxPrice?: number|null,
+ *   volume?: string|null,
  *   nicotine?: string|null,
  *   producer?: string|null,
  * }} parsed
@@ -526,6 +541,7 @@ function parseCatalogFilters(q) {
 function catalogExtraFiltersSql(columnAlias, parsed, opts = {}) {
   const parts = [];
   const params = [];
+  const vk = sqlVolumeKey(columnAlias);
   const nk = sqlNicotineKey(columnAlias);
   const br = sqlBrandTrim(columnAlias);
 
@@ -536,6 +552,10 @@ function catalogExtraFiltersSql(columnAlias, parsed, opts = {}) {
   if (parsed.maxPrice != null && Number.isFinite(parsed.maxPrice)) {
     parts.push(`${columnAlias}.price <= ?`);
     params.push(parsed.maxPrice);
+  }
+  if (parsed.volume != null) {
+    parts.push(`${vk} = ?`);
+    params.push(parsed.volume);
   }
   if (parsed.nicotine != null) {
     parts.push(`${nk} = ?`);
@@ -674,6 +694,7 @@ app.get('/api/products/filter-meta', async (req, res, next) => {
   try {
     const parsed = parseCatalogFilters(req.query);
     const avail = productAvailableSQL('p');
+    const vk = sqlVolumeKey('p');
     const nk = sqlNicotineKey('p');
     /** Метаданные без привязки к конкретному производителю (полный список для фильтра). */
     const { sql: ex, params: exParams } = catalogExtraFiltersSql('p', parsed, {
@@ -714,6 +735,21 @@ app.get('/api/products/filter-meta', async (req, res, next) => {
       .map((r) => String(r.nk || '').trim())
       .filter(Boolean);
 
+    const volumeRows = await all(
+      `
+      SELECT DISTINCT ${vk} AS vk
+      FROM products p
+      ${joinCatSql}
+      WHERE ${avail}${whereCatSql}${ex}
+        AND ${vk} IS NOT NULL AND ${vk} <> ''
+      ORDER BY vk ASC`,
+      baseParams,
+    );
+
+    const volumeValues = volumeRows
+      .map((r) => String(r.vk || '').trim())
+      .filter(Boolean);
+
     const brandRows = await all(
       `
       SELECT DISTINCT TRIM(COALESCE(p.brand,'')) AS bn FROM products p
@@ -734,6 +770,7 @@ app.get('/api/products/filter-meta', async (req, res, next) => {
     res.json({
       priceMin: priceMinOverall,
       priceMax: priceMaxOverall,
+      volumeValues,
       nicotineValues,
       manufacturers,
     });
