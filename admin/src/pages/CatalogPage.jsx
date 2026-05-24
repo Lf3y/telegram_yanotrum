@@ -379,7 +379,7 @@ export default function CatalogPage() {
                             type="button"
                             className="btn btn-sm btn-danger"
                             onClick={async () => {
-                              if (!window.confirm('Удалить категорию? Сначала убери все товары.')) return;
+                              if (!window.confirm('Удалить категорию вместе со всеми товарами и брендами внутри?')) return;
                               try { await adminFetch(`/api/admin/categories/${c.id}`, { method: 'DELETE' }); await reloadCategories(); if (String(activeCat) === String(c.id)) setActiveCat(''); } catch (e) { setError(e?.message); }
                             }}
                           >Удалить</button>
@@ -569,7 +569,7 @@ export default function CatalogPage() {
                                 type="button"
                                 className="btn btn-sm btn-danger"
                                 onClick={async () => {
-                                  if (!window.confirm(`Удалить бренд «${b.name}»?`)) return;
+                                  if (!window.confirm(`Удалить бренд «${b.name}» вместе со всеми его товарами?`)) return;
                                   try {
                                     await adminFetch(`/api/admin/brands/${b.id}`, { method: 'DELETE' });
                                     if (String(activeBrand) === String(b.id)) setActiveBrand('');

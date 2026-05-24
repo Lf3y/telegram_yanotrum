@@ -19,11 +19,16 @@ const HEADER_ALIASES = {
     'объем / никотин',
     'объём/никотин',
     'объем/никотин',
+    'объём, никотин',
+    'объем, никотин',
+    'объём,никотин',
+    'объем,никотин',
     'объем и никотин',
     'объём и никотин',
     'volume / nicotine',
     'volume/nicotine',
     'volume nicotine',
+    'volume, nicotine',
   ],
   stock_qty: ['остаток', 'stock', 'stock_qty', 'количество', 'кол-во', 'qty', 'шт'],
   in_stock: ['в наличии', 'in_stock', 'доступен'],
@@ -57,8 +62,19 @@ function detectFieldMap(sampleRow) {
   const fm = {};
   if (!sampleRow || typeof sampleRow !== 'object') return fm;
   for (const key of Object.keys(sampleRow)) {
-    const f = ALIAS_TO_FIELD.get(normHead(key));
+    const normalized = normHead(key);
+    const f = ALIAS_TO_FIELD.get(normalized);
     if (f) fm[f] = key;
+  }
+  /** Заголовок «Объем, Никотин» без слэша — одна колонка на оба поля. */
+  if (!fm.volume_nicotine && !fm.volume && !fm.nicotine) {
+    for (const key of Object.keys(sampleRow)) {
+      const normalized = normHead(key);
+      if (/объ[её]м/.test(normalized) && /никотин|nicotine|крепост|мг|mg/.test(normalized)) {
+        fm.volume_nicotine = key;
+        break;
+      }
+    }
   }
   return fm;
 }
@@ -339,7 +355,7 @@ async function findExistingProduct(categoryId, itemName, brandTextForMatch) {
   );
 }
 
-export async function runProductImport(buffer, originalname, { dryRun = false, force = false } = {}) {
+export async function runProductImport(buffer, originalname, { dryRun = false, force = false, replaceAll = false } = {}) {
   const rows = sheetRowsFromBuffer(buffer);
   if (!rows.length) {
     return {
@@ -421,6 +437,15 @@ export async function runProductImport(buffer, originalname, { dryRun = false, f
   let updated = 0;
   let wouldInsert = 0;
   let wouldUpdate = 0;
+  let deletedProducts = 0;
+
+  if (replaceAll) {
+    const countRow = await get('SELECT COUNT(*) as c FROM products');
+    deletedProducts = Number(countRow?.c) || 0;
+    if (!dryRun) {
+      await run('DELETE FROM products');
+    }
+  }
 
   for (const { lineNo, parsed } of workItems) {
     const catRes = await ensureCategory(parsed, dryRun, categoriesToCreate);
@@ -438,12 +463,13 @@ export async function runProductImport(buffer, originalname, { dryRun = false, f
     await ensureBrand(categoryIdForLookup, parsed, dryRun, brandsToCreate);
 
     if (dryRun) {
-      if (existingProd) wouldUpdate += 1;
+      if (replaceAll) wouldInsert += 1;
+      else if (existingProd) wouldUpdate += 1;
       else wouldInsert += 1;
       if (preview.length < 25) {
         preview.push({
           row: lineNo,
-          action: existingProd ? 'обновление' : 'добавление',
+          action: replaceAll || !existingProd ? 'добавление' : 'обновление',
           category: parsed.category.trim(),
           brand: parsed.brand?.trim() || '—',
           name: parsed.name.trim(),
@@ -570,8 +596,10 @@ export async function runProductImport(buffer, originalname, { dryRun = false, f
           newCategories: categoriesToCreate.size,
           newBrands: brandsToCreate.size,
           wouldInsert,
-          wouldUpdate,
+          wouldUpdate: replaceAll ? 0 : wouldUpdate,
+          replaceAll,
+          wouldDeleteProducts: replaceAll ? deletedProducts : 0,
         }
-      : { inserted, updated },
+      : { inserted, updated: replaceAll ? 0 : updated, replaceAll, deletedProducts },
   };
 }

@@ -52,7 +52,7 @@ export async function adminUpload(file) {
 /**
  * Импорт товаров из Excel (.xlsx, .xls) или CSV. dryRun — только проверка и превью.
  */
-export async function adminImportProducts(file, { dryRun = false, force = false } = {}) {
+export async function adminImportProducts(file, { dryRun = false, force = false, replaceAll = false } = {}) {
   const { apiBase, token } = loadAuth();
   const form = new FormData();
   form.append('file', file);
@@ -60,6 +60,7 @@ export async function adminImportProducts(file, { dryRun = false, force = false 
   const q = new URLSearchParams();
   if (dryRun) q.set('dry_run', '1');
   if (force) q.set('force', '1');
+  if (replaceAll) q.set('replace_all', '1');
 
   const url = joinUrl(apiBase, `/api/admin/import/products${q.toString() ? `?${q}` : ''}`);
 

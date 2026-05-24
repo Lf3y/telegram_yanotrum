@@ -8,6 +8,7 @@ export default function ImportPage() {
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
   const [forcePartial, setForcePartial] = useState(false);
+  const [replaceAll, setReplaceAll] = useState(true);
 
   async function doPreview() {
     setErr('');
@@ -18,7 +19,7 @@ export default function ImportPage() {
     }
     setBusy(true);
     try {
-      const r = await adminImportProducts(file, { dryRun: true });
+      const r = await adminImportProducts(file, { dryRun: true, replaceAll });
       setResult(r);
     } catch (e) {
       setErr(e?.message || 'Ошибка');
@@ -36,7 +37,7 @@ export default function ImportPage() {
     }
     setBusy(true);
     try {
-      const r = await adminImportProducts(file, { dryRun: false, force: forcePartial });
+      const r = await adminImportProducts(file, { dryRun: false, force: forcePartial, replaceAll });
       setResult(r);
       if (r.aborted) {
         setErr(r.message || 'Импорт не выполнен: есть ошибки в файле. Сначала «Проверить».');
@@ -53,8 +54,8 @@ export default function ImportPage() {
       <h1 className="h1">Импорт из Excel / CSV</h1>
       <p className="muted" style={{ maxWidth: 880 }}>
         Первая строка — <strong>заголовки колонок</strong>, далее по одному товару на строку. Читается{' '}
-        <strong>первый лист</strong> книги Excel. Категории и бренды создаются автоматически, если их ещё нет.
-        Совпадение товара для обновления: одна и та же категория + то же название + тот же бренд (пустой бренд тоже учитывается).
+        <strong>первый лист</strong> книги Excel. Категории и бренды сохраняются; при включённой замене все старые товары удаляются перед импортом.
+        Колонка <strong>«Объем, Никотин»</strong> (через запятую) разбивается на объём и крепость автоматически.
       </p>
 
       <div className="card" style={{ marginTop: 16, maxWidth: 960 }}>
@@ -103,9 +104,9 @@ export default function ImportPage() {
                 <td>Старайтесь добавлять колонку только если нужна зачёркнутая цена в витрине.</td>
               </tr>
               <tr>
-                <td className="kbd">Объём / Никотин</td>
+                <td className="kbd">Объем, Никотин</td>
                 <td>Нет</td>
-                <td>Подходит для жидкостей, например 60ml и 3мг.</td>
+                <td>Одна колонка через запятую, например «60ml, 3мг» — разбивается на объём и никотин.</td>
               </tr>
               <tr>
                 <td className="kbd">Остаток</td>
@@ -137,7 +138,11 @@ export default function ImportPage() {
           disabled={busy}
           onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setErr(''); }}
         />
-        <div className="row" style={{ marginTop: 12, alignItems: 'center', gap: 12 }}>
+        <div className="row" style={{ marginTop: 12, flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+          <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={replaceAll} disabled={busy} onChange={e => setReplaceAll(e.target.checked)} />
+            <span style={{ fontSize: 14 }}>Заменить все товары (удалить старые перед импортом, категории и бренды оставить)</span>
+          </label>
           <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={forcePartial} disabled={busy} onChange={e => setForcePartial(e.target.checked)} />
             <span style={{ fontSize: 14 }}>Есть битые строки — всё равно импортировать только безошибочные</span>

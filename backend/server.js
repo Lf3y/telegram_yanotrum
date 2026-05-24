@@ -225,9 +225,11 @@ app.post('/api/admin/import/products', requireAdmin, handleImportMulter, async (
     }
     const dryRun = req.query.dry_run === '1' || req.query.dry_run === 'true';
     const force = req.query.force === '1' || req.query.force === 'true';
+    const replaceAll = req.query.replace_all === '1' || req.query.replace_all === 'true';
     const result = await runProductImport(req.file.buffer, req.file.originalname || 'import.xlsx', {
       dryRun,
       force,
+      replaceAll,
     });
     res.json(result);
   } catch (e) {
@@ -1177,22 +1179,19 @@ app.delete('/api/admin/products/:id', requireAdmin, async (req, res, next) => {
 app.delete('/api/admin/brands/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    await run('UPDATE products SET brand_id=NULL WHERE brand_id=?', [id]);
+    const deleted = await run('DELETE FROM products WHERE brand_id=?', [id]);
     await run('DELETE FROM brands WHERE id=?', [id]);
-    res.json({ ok: true });
+    res.json({ ok: true, deletedProducts: deleted.changes ?? 0 });
   } catch (e) { next(e); }
 });
 
 app.delete('/api/admin/categories/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const pc = await get('SELECT COUNT(*) as c FROM products WHERE category_id=?', [id]);
-    if (pc && Number(pc.c) > 0) {
-      return res.status(400).json({ error: 'В категории есть товары — сначала удали или перенеси товары' });
-    }
+    const deleted = await run('DELETE FROM products WHERE category_id=?', [id]);
     await run('DELETE FROM brands WHERE category_id=?', [id]);
     await run('DELETE FROM categories WHERE id=?', [id]);
-    res.json({ ok: true });
+    res.json({ ok: true, deletedProducts: deleted.changes ?? 0 });
   } catch (e) { next(e); }
 });
 
