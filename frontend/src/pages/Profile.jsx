@@ -9,6 +9,7 @@ import { pluralRu } from '../lib/pluralRu';
 import { Icon, ProductImage } from '../components/icons';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { repeatOrderToCart } from '../lib/repeatOrder';
+import { useLoungeWallet } from '../game/lounge/useLoungeWallet';
 
 /** @typedef {'orders' | 'favorites'} ProfileTab */
 
@@ -128,6 +129,9 @@ function ProfileTabs({ tab, onChange, ordersCount, favoritesCount }) {
 }
 
 function ProfileLoungeCard() {
+  const { user } = useTelegram();
+  const { balance, config } = useLoungeWallet(user.id);
+
   return (
     <section className="profile-lounge-card card">
       <div className="profile-lounge-copy">
@@ -136,7 +140,10 @@ function ProfileLoungeCard() {
           2D лаунж
         </div>
         <div className="profile-lounge-title">King Lounge</div>
-        <p>Заходи в общую комнату, ходи джойстиком, общайся и пускай облака.</p>
+        <p>
+          Заходи в общую комнату, общайся, включай музыку в jukebox и трать монетки.
+          {' '}У тебя: <strong>{balance} 🪙</strong> · за заказ: +{config.coinsPerOrder}
+        </p>
       </div>
       <Link to="/lounge" className="profile-lounge-button">
         Зайти

@@ -16,6 +16,16 @@ import { adviseProducts } from './aiAdvisor.js';
 import { fetchExternalImage, parseAllowedImageUrl } from './mediaProxy.js';
 import { isCloudinaryEnabled, uploadImageBuffer } from './imageStorage.js';
 import { initGameLounge } from './gameLounge.js';
+import {
+  COINS_PER_ORDER,
+  JUKEBOX_SONG_COST,
+  adjustWalletBalance,
+  getWallet,
+  listWallets,
+  setWalletBalance,
+  spendCoins,
+} from './coins.js';
+import { getJukeboxState, queueJukeboxTrack, searchSoundCloudTracks } from './loungeJukebox.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1257,6 +1267,110 @@ app.delete('/api/admin/blocked-users/:telegramUserId', requireAdmin, async (req,
       return res.status(404).json({ error: 'Пользователь не найден в списке блокировок' });
     }
     res.json({ ok: true, telegram_user_id: uid });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/lounge/config', (_req, res) => {
+  res.json({
+    coinsPerOrder: COINS_PER_ORDER,
+    jukeboxSongCost: JUKEBOX_SONG_COST,
+  });
+});
+
+app.get('/api/lounge/wallet/:telegramUserId', async (req, res, next) => {
+  try {
+    const wallet = await getWallet(req.params.telegramUserId);
+    res.json(wallet);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/lounge/jukebox/state', (_req, res) => {
+  res.json(getJukeboxState());
+});
+
+app.get('/api/lounge/jukebox/search', async (req, res, next) => {
+  try {
+    const tracks = await searchSoundCloudTracks(String(req.query.q || ''));
+    res.json({ tracks });
+  } catch (e) {
+    if (e?.code === 'SOUNDCLOUD_NOT_CONFIGURED') {
+      return res.status(503).json({ error: e.message, code: e.code });
+    }
+    next(e);
+  }
+});
+
+app.post('/api/lounge/jukebox/queue', async (req, res, next) => {
+  try {
+    const { telegram_user_id, track, player_name } = req.body || {};
+    const uid = String(telegram_user_id ?? '').trim();
+    if (!uid) return res.status(400).json({ error: 'Укажите telegram_user_id' });
+    if (!track?.permalink || !track?.id) {
+      return res.status(400).json({ error: 'Некорректный трек' });
+    }
+
+    const balance = await spendCoins(uid, JUKEBOX_SONG_COST, 'jukebox_queue', {
+      meta: { trackId: String(track.id), title: String(track.title || '') },
+    });
+
+    queueJukeboxTrack(
+      {
+        id: String(track.id),
+        title: String(track.title || 'Без названия'),
+        artist: String(track.artist || 'SoundCloud'),
+        permalink: String(track.permalink),
+        artworkUrl: String(track.artworkUrl || ''),
+        durationMs: Number(track.durationMs || 0),
+      },
+      { id: uid, name: String(player_name || 'Игрок') },
+    );
+
+    res.json({
+      ok: true,
+      balance,
+      jukebox: getJukeboxState(),
+    });
+  } catch (e) {
+    if (e?.code === 'INSUFFICIENT_COINS') {
+      return res.status(400).json({ error: e.message, code: e.code });
+    }
+    if (e?.code === 'SOUNDCLOUD_NOT_CONFIGURED') {
+      return res.status(503).json({ error: e.message, code: e.code });
+    }
+    next(e);
+  }
+});
+
+app.get('/api/admin/wallets', requireAdmin, async (req, res, next) => {
+  try {
+    const wallets = await listWallets(String(req.query.search || ''));
+    res.json(wallets);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/wallets/:telegramUserId', requireAdmin, async (req, res, next) => {
+  try {
+    const wallet = await getWallet(req.params.telegramUserId);
+    res.json(wallet);
+  } catch (e) { next(e); }
+});
+
+app.post('/api/admin/wallets/:telegramUserId/adjust', requireAdmin, async (req, res, next) => {
+  try {
+    const uid = String(req.params.telegramUserId ?? '').trim();
+    if (!uid) return res.status(400).json({ error: 'Некорректный id' });
+
+    const { balance, delta } = req.body || {};
+    let nextBalance;
+    if (balance != null) {
+      nextBalance = await setWalletBalance(uid, Number(balance), 'admin');
+    } else if (delta != null) {
+      nextBalance = await adjustWalletBalance(uid, Number(delta), 'admin');
+    } else {
+      return res.status(400).json({ error: 'Укажите balance или delta' });
+    }
+
+    res.json({ telegram_user_id: uid, balance: nextBalance });
   } catch (e) { next(e); }
 });
 

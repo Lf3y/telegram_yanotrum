@@ -1,0 +1,168 @@
+import { useState } from 'react';
+import { apiFetch } from '../../lib/api';
+
+/**
+ * @typedef {Object} JukeboxTrack
+ * @property {string} id
+ * @property {string} title
+ * @property {string} artist
+ * @property {string} permalink
+ * @property {string} artworkUrl
+ * @property {number} durationMs
+ */
+
+/**
+ * @typedef {Object} JukeboxState
+ * @property {JukeboxTrack | null} track
+ * @property {string} queuedBy
+ * @property {string} queuedByName
+ * @property {number} startedAt
+ */
+
+/**
+ * Панель музыкальной коробки лаунжа.
+ * @param {{
+ *   open: boolean,
+ *   onClose: () => void,
+ *   balance: number,
+ *   songCost: number,
+ *   userId: string | number,
+ *   playerName: string,
+ *   jukeboxState: JukeboxState | null,
+ *   onQueued: (balance: number) => void,
+ * }} props
+ */
+export function JukeboxPanel({
+  open,
+  onClose,
+  balance,
+  songCost,
+  userId,
+  playerName,
+  jukeboxState,
+  onQueued,
+}) {
+  const [query, setQuery] = useState('');
+  const [tracks, setTracks] = useState(/** @type {JukeboxTrack[]} */ ([]));
+  const [loading, setLoading] = useState(false);
+  const [queueingId, setQueueingId] = useState('');
+  const [error, setError] = useState('');
+
+  if (!open) return null;
+
+  /**
+   * Ищет треки в SoundCloud через backend.
+   * @param {React.FormEvent<HTMLFormElement>} event
+   */
+  async function handleSearch(event) {
+    event.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiFetch(`/api/lounge/jukebox/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setTracks(Array.isArray(data.tracks) ? data.tracks : []);
+    } catch (e) {
+      setTracks([]);
+      setError(String(e.message || 'Не удалось найти треки'));
+    }
+    setLoading(false);
+  }
+
+  /**
+   * Ставит трек в общий плеер за монеты.
+   * @param {JukeboxTrack} track
+   */
+  async function handleQueue(track) {
+    if (balance < songCost) {
+      setError(`Нужно ${songCost} монет, у тебя ${balance}`);
+      return;
+    }
+
+    setQueueingId(track.id);
+    setError('');
+    try {
+      const res = await apiFetch('/api/lounge/jukebox/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_user_id: String(userId),
+          player_name: playerName,
+          track,
+        }),
+      });
+      const data = await res.json();
+      onQueued(Number(data.balance || 0));
+      onClose();
+    } catch (e) {
+      setError(String(e.message || 'Не удалось поставить трек'));
+    }
+    setQueueingId('');
+  }
+
+  return (
+    <div className="lounge-jukebox-backdrop" role="dialog" aria-modal="true" aria-label="Музыкальная коробка">
+      <div className="lounge-jukebox card">
+        <div className="lounge-jukebox-head">
+          <div>
+            <div className="lounge-jukebox-title">Музыкальная коробка</div>
+            <div className="lounge-jukebox-sub">
+              Баланс: {balance} · трек: {songCost} монет
+            </div>
+          </div>
+          <button type="button" className="lounge-jukebox-close" onClick={onClose}>✕</button>
+        </div>
+
+        {jukeboxState?.track && (
+          <div className="lounge-jukebox-now">
+            Сейчас: {jukeboxState.track.title} — {jukeboxState.track.artist}
+            {jukeboxState.queuedByName ? ` · от ${jukeboxState.queuedByName}` : ''}
+          </div>
+        )}
+
+        <form className="lounge-jukebox-search" onSubmit={handleSearch}>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Найти трек в SoundCloud..."
+            maxLength={80}
+          />
+          <button type="submit" className="btn btn-primary" disabled={loading}>
+            {loading ? 'Ищем…' : 'Найти'}
+          </button>
+        </form>
+
+        {error && <div className="catalog-error-banner lounge-jukebox-error">{error}</div>}
+
+        <div className="lounge-jukebox-results">
+          {tracks.length === 0 && !loading && (
+            <div className="lounge-jukebox-empty">Найди трек и поставь его для всех в лаунже</div>
+          )}
+          {tracks.map((track) => (
+            <button
+              key={track.id}
+              type="button"
+              className="lounge-jukebox-track"
+              disabled={queueingId === track.id}
+              onClick={() => handleQueue(track)}
+            >
+              {track.artworkUrl ? (
+                <img src={track.artworkUrl} alt="" className="lounge-jukebox-cover" />
+              ) : (
+                <div className="lounge-jukebox-cover lounge-jukebox-cover--empty">♪</div>
+              )}
+              <div className="lounge-jukebox-track-meta">
+                <div className="lounge-jukebox-track-title">{track.title}</div>
+                <div className="lounge-jukebox-track-artist">{track.artist}</div>
+              </div>
+              <div className="lounge-jukebox-track-cost">{songCost} 🪙</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

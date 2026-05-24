@@ -1,4 +1,5 @@
 import { Server } from 'socket.io';
+import { getJukeboxState, setJukeboxBroadcast } from './loungeJukebox.js';
 
 const WORLD = {
   width: 960,
@@ -166,6 +167,10 @@ export function initGameLounge(httpServer, options) {
 
   const lounge = io.of('/lounge');
 
+  setJukeboxBroadcast((state) => {
+    lounge.emit('jukebox:state', state);
+  });
+
   lounge.on('connection', (socket) => {
     let player;
 
@@ -182,6 +187,7 @@ export function initGameLounge(httpServer, options) {
       selfId: player.id,
       world: WORLD,
       players: [...players.values()].map(publicPlayer),
+      jukebox: getJukeboxState(),
     });
     socket.broadcast.emit('player:joined', publicPlayer(player));
 

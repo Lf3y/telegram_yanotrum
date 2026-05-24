@@ -7,6 +7,7 @@ const NAV = [
   { to: '/products', label: 'Товары' },
   { to: '/orders', label: 'Заказы' },
   { to: '/users', label: 'Блокировки' },
+  { to: '/coins', label: 'Монетки' },
   { to: '/catalog', label: 'Витрина' },
 ];
 

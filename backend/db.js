@@ -149,6 +149,23 @@ CREATE TABLE IF NOT EXISTS favorites (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(telegram_user_id, product_id)
 );
+
+CREATE TABLE IF NOT EXISTS user_wallets (
+  telegram_user_id TEXT PRIMARY KEY,
+  balance INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS coin_transactions (
+  id SERIAL PRIMARY KEY,
+  telegram_user_id TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  order_id INTEGER,
+  meta TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 function pgPoolConfig() {
@@ -216,6 +233,9 @@ async function initPostgres() {
   `).catch(() => {});
   await pool.query(`
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS coins_awarded INTEGER DEFAULT 0
   `).catch(() => {});
   await syncPgBrandsFromProductNames();
   console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
@@ -365,6 +385,31 @@ async function initSqlite() {
         UNIQUE(telegram_user_id, product_id)
       );
     `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS user_wallets (
+        telegram_user_id TEXT PRIMARY KEY,
+        balance INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS coin_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_user_id TEXT NOT NULL,
+        delta INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        order_id INTEGER,
+        meta TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    if (!hasColumnSQLite('orders', 'coins_awarded')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN coins_awarded INTEGER DEFAULT 0');
+    }
 
     sqliteDb.run(`
       INSERT OR IGNORE INTO categories (name, slug, emoji, description, sort_order)

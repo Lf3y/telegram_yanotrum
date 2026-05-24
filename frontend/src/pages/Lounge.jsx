@@ -7,6 +7,9 @@ import { VirtualJoystick } from '../game/lounge/VirtualJoystick';
 import { LOUNGE_COLORS, PLAYER_SPEED } from '../game/lounge/constants';
 import { useLoungeSocket } from '../game/lounge/useLoungeSocket';
 import { useLoungeAudio } from '../game/lounge/useLoungeAudio';
+import { useLoungeWallet } from '../game/lounge/useLoungeWallet';
+import { JukeboxPanel } from '../game/lounge/JukeboxPanel';
+import { useSoundCloudPlayer } from '../game/lounge/useSoundCloudPlayer';
 
 /**
  * Ограничивает координату внутри комнаты.
@@ -51,6 +54,7 @@ function movementVector(joystick, keys) {
 export default function Lounge() {
   const { tg, user } = useTelegram();
   const audio = useLoungeAudio();
+  const wallet = useLoungeWallet(user.id);
   const {
     selfId,
     world,
@@ -60,6 +64,7 @@ export default function Lounge() {
     color,
     vapeEvents,
     chatBubbles,
+    jukeboxState,
     sendMove,
     sendChat,
     sendVape,
@@ -68,12 +73,17 @@ export default function Lounge() {
 
   const [chatText, setChatText] = useState('');
   const [localPlayer, setLocalPlayer] = useState(null);
+  const [jukeboxOpen, setJukeboxOpen] = useState(false);
   const joystickRef = useRef({ x: 0, y: 0 });
   const keysRef = useRef(new Set());
   const positionRef = useRef(null);
   const selfPlayerRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const wasMovingRef = useRef(false);
+  const soundCloudIframeRef = useSoundCloudPlayer(jukeboxState);
+  const playerName = [user.first_name, user.last_name].filter(Boolean).join(' ')
+    || user.username
+    || 'Игрок';
 
   useEffect(() => {
     tg?.disableVerticalSwipes?.();
@@ -244,7 +254,7 @@ export default function Lounge() {
         <div>
           <div className="header-title">King Lounge</div>
           <div className="header-sub">
-            {connected ? `Онлайн: ${players.length}` : 'Подключаемся...'}
+            {connected ? `Онлайн: ${players.length} · 🪙 ${wallet.balance}` : 'Подключаемся...'}
           </div>
         </div>
       </div>
@@ -252,6 +262,12 @@ export default function Lounge() {
       {error && <div className="catalog-error-banner lounge-error">{error}</div>}
 
       <section className="lounge-shell card">
+        {jukeboxState?.track && (
+          <div className="lounge-now-playing">
+            <span>♪ {jukeboxState.track.title}</span>
+            <span>{jukeboxState.track.artist}</span>
+          </div>
+        )}
         <div className="lounge-stage">
           <LoungeCanvas
             players={renderedPlayers}
@@ -270,6 +286,10 @@ export default function Lounge() {
             }}
           />
           <div className="lounge-actions">
+            <button type="button" className="lounge-action-btn" onClick={() => setJukeboxOpen(true)}>
+              🎵
+              <span>Jukebox</span>
+            </button>
             <button type="button" className="lounge-action-btn" onClick={handleVape}>
               💨
               <span>Вейп</span>
@@ -288,7 +308,24 @@ export default function Lounge() {
             </div>
           </div>
         </div>
+        <iframe
+          ref={soundCloudIframeRef}
+          title="SoundCloud player"
+          className="lounge-soundcloud"
+          allow="autoplay"
+        />
       </section>
+
+      <JukeboxPanel
+        open={jukeboxOpen}
+        onClose={() => setJukeboxOpen(false)}
+        balance={wallet.balance}
+        songCost={wallet.config.jukeboxSongCost}
+        userId={user.id}
+        playerName={playerName}
+        jukeboxState={jukeboxState}
+        onQueued={(nextBalance) => wallet.setBalance(nextBalance)}
+      />
 
       <form className="lounge-chat card" onSubmit={handleChatSubmit}>
         <input

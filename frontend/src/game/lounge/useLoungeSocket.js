@@ -61,6 +61,7 @@ export function useLoungeSocket(user) {
   const initialColorRef = useRef(color);
   const [vapeEvents, setVapeEvents] = useState([]);
   const [chatBubbles, setChatBubbles] = useState([]);
+  const [jukeboxState, setJukeboxState] = useState(null);
 
   useEffect(() => {
     const base = resolveApiBase() || window.location.origin;
@@ -98,6 +99,7 @@ export function useLoungeSocket(user) {
       setSelfId(String(payload.selfId || ''));
       setWorld(payload.world || DEFAULT_WORLD);
       setPlayersById(Object.fromEntries((payload.players || []).map((player) => [player.id, player])));
+      setJukeboxState(payload.jukebox || null);
     });
 
     socket.on('player:joined', (player) => {
@@ -127,6 +129,10 @@ export function useLoungeSocket(user) {
 
     socket.on('player:vape', (event) => {
       setVapeEvents((prev) => [...prev.slice(-16), event]);
+    });
+
+    socket.on('jukebox:state', (state) => {
+      setJukeboxState(state || null);
     });
 
     socket.on('player:left', ({ id }) => {
@@ -182,6 +188,7 @@ export function useLoungeSocket(user) {
     color,
     vapeEvents,
     chatBubbles,
+    jukeboxState,
     sendMove,
     sendChat,
     sendVape,

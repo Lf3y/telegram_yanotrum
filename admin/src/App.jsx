@@ -8,6 +8,7 @@ import OrdersPage from './pages/OrdersPage';
 import CatalogPage from './pages/CatalogPage';
 import ImportPage from './pages/ImportPage';
 import BlockedUsersPage from './pages/BlockedUsersPage';
+import CoinsPage from './pages/CoinsPage';
 
 function Guard({ children }) {
   const { token } = loadAuth();
@@ -65,6 +66,14 @@ export default function App() {
           element={(
             <Guard>
               <BlockedUsersPage />
+            </Guard>
+          )}
+        />
+        <Route
+          path="/coins"
+          element={(
+            <Guard>
+              <CoinsPage />
             </Guard>
           )}
         />

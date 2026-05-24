@@ -40,5 +40,11 @@ export async function transitionOrderStatus(orderId, nextStatus) {
 
   await run('UPDATE orders SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [next, id]);
   const order = await get('SELECT * FROM orders WHERE id=?', [id]);
+
+  if (next === 'done' && prev !== 'done') {
+    const { awardOrderCoins } = await import('./coins.js');
+    await awardOrderCoins(order);
+  }
+
   return { ok: true, order, prev, next, skipped: false };
 }
