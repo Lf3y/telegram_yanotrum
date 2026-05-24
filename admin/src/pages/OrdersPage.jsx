@@ -13,15 +13,29 @@ const STATUS_OPTIONS = [
 
 export default function OrdersPage() {
   const [list, setList] = useState([]);
+  const [blockedIds, setBlockedIds] = useState(/** @type {Set<string>} */ (new Set()));
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
 
   function load() {
     setLoading(true);
     const q = filter ? `&status=${encodeURIComponent(filter)}` : '';
-    adminFetch(`/api/admin/orders?limit=100${q}`)
-      .then(d => { setList(Array.isArray(d) ? d : []); setLoading(false); })
-      .catch(() => { setList([]); setLoading(false); });
+    Promise.all([
+      adminFetch(`/api/admin/orders?limit=100${q}`),
+      adminFetch('/api/admin/blocked-users'),
+    ])
+      .then(([orders, blocked]) => {
+        setList(Array.isArray(orders) ? orders : []);
+        setBlockedIds(new Set(
+          (Array.isArray(blocked) ? blocked : []).map((row) => String(row.telegram_user_id)),
+        ));
+        setLoading(false);
+      })
+      .catch(() => {
+        setList([]);
+        setBlockedIds(new Set());
+        setLoading(false);
+      });
   }
 
   useEffect(() => { load(); }, [filter]);
@@ -32,6 +46,41 @@ export default function OrdersPage() {
       load();
     } catch (e) {
       alert(e?.message);
+    }
+  }
+
+  async function blockUser(telegramUserId) {
+    const uid = String(telegramUserId ?? '').trim();
+    if (!uid) return;
+    const reason = window.prompt('Причина блокировки (необязательно):') ?? '';
+    try {
+      await adminFetch('/api/admin/blocked-users', {
+        method: 'POST',
+        body: JSON.stringify({
+          telegram_user_id: uid,
+          reason: reason || null,
+          blocked_by: 'admin',
+        }),
+      });
+      alert(`Пользователь ${uid} заблокирован`);
+      load();
+    } catch (e) {
+      alert(e?.message || 'Ошибка блокировки');
+    }
+  }
+
+  async function unblockUser(telegramUserId) {
+    const uid = String(telegramUserId ?? '').trim();
+    if (!uid) return;
+    if (!window.confirm(`Разблокировать пользователя ${uid}?`)) return;
+    try {
+      await adminFetch(`/api/admin/blocked-users/${encodeURIComponent(uid)}`, {
+        method: 'DELETE',
+      });
+      alert(`Пользователь ${uid} разблокирован`);
+      load();
+    } catch (e) {
+      alert(e?.message || 'Ошибка разблокировки');
     }
   }
 
@@ -70,7 +119,10 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.map(o => (
+                {list.map(o => {
+                  const uid = String(o.telegram_user_id ?? '');
+                  const isBlocked = blockedIds.has(uid);
+                  return (
                   <tr key={o.id}>
                     <td className="kbd">{o.id}</td>
                     <td>{o.created_at}</td>
@@ -114,29 +166,27 @@ export default function OrdersPage() {
                           Отменить
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        style={{ marginTop: 6 }}
-                        onClick={async () => {
-                          const reason = window.prompt('Причина блокировки (необязательно):') ?? '';
-                          try {
-                            await adminFetch('/api/admin/blocked-users', {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                telegram_user_id: o.telegram_user_id,
-                                reason: reason || null,
-                                blocked_by: 'admin',
-                              }),
-                            });
-                            alert('Пользователь заблокирован');
-                          } catch (e) {
-                            alert(e?.message || 'Ошибка');
-                          }
-                        }}
-                      >
-                        🚫 Заблокировать клиента
-                      </button>
+                      {isBlocked ? (
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span className="badge badge-bad">Заблокирован</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            onClick={() => unblockUser(uid)}
+                          >
+                            Разблокировать
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          style={{ marginTop: 6 }}
+                          onClick={() => blockUser(uid)}
+                        >
+                          🚫 Заблокировать клиента
+                        </button>
+                      )}
                     </td>
                     <td>
                       <span className="badge badge-ok">{(o.items || []).length} поз.</span>
@@ -147,7 +197,7 @@ export default function OrdersPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
             {list.length === 0 && <p className="muted" style={{ padding: 8 }}>Заказов нет</p>}

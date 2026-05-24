@@ -1244,8 +1244,11 @@ app.delete('/api/admin/blocked-users/:telegramUserId', requireAdmin, async (req,
   try {
     const uid = String(req.params.telegramUserId ?? '').trim();
     if (!uid) return res.status(400).json({ error: 'Некорректный id' });
-    await run('DELETE FROM blocked_users WHERE telegram_user_id=?', [uid]);
-    res.json({ ok: true });
+    const result = await run('DELETE FROM blocked_users WHERE telegram_user_id=?', [uid]);
+    if (!result.changes) {
+      return res.status(404).json({ error: 'Пользователь не найден в списке блокировок' });
+    }
+    res.json({ ok: true, telegram_user_id: uid });
   } catch (e) { next(e); }
 });
 

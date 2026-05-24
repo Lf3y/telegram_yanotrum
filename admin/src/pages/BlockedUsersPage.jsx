@@ -38,6 +38,7 @@ export default function BlockedUsersPage() {
           blocked_by: 'admin',
         }),
       });
+      alert(`Пользователь ${uid} заблокирован`);
       load();
     } catch (e) {
       alert(e?.message || 'Ошибка блокировки');
@@ -45,10 +46,14 @@ export default function BlockedUsersPage() {
   }
 
   async function unblockUser(telegramUserId) {
+    const uid = String(telegramUserId ?? '').trim();
+    if (!uid) return;
+    if (!window.confirm(`Разблокировать пользователя ${uid}?`)) return;
     try {
-      await adminFetch(`/api/admin/blocked-users/${encodeURIComponent(telegramUserId)}`, {
+      await adminFetch(`/api/admin/blocked-users/${encodeURIComponent(uid)}`, {
         method: 'DELETE',
       });
+      alert(`Пользователь ${uid} разблокирован`);
       load();
     } catch (e) {
       alert(e?.message || 'Ошибка разблокировки');
@@ -178,7 +183,16 @@ export default function BlockedUsersPage() {
                       <td>{c.last_order_at}</td>
                       <td>
                         {isBlocked ? (
-                          <span className="badge badge-bad">Заблокирован</span>
+                          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="badge badge-bad">Заблокирован</span>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => unblockUser(uid)}
+                            >
+                              Разблокировать
+                            </button>
+                          </div>
                         ) : (
                           <button
                             type="button"
