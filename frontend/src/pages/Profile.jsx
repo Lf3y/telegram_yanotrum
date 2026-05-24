@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTelegram } from '../hooks/useTelegram';
 import { useCart } from '../store/cart';
 import { useFavorites } from '../hooks/useFavorites';
@@ -73,12 +73,11 @@ function ProfileHero({ user }) {
 }
 
 /**
- * @param {{ stats: { orders: number, spent: number, done: number, favorites: number } }} props
+ * @param {{ stats: { orders: number, done: number, favorites: number } }} props
  */
 function ProfileStats({ stats }) {
   const items = [
     { label: 'Заказов', value: String(stats.orders), hint: 'всего' },
-    { label: 'Потрачено', value: formatByn(stats.spent), hint: 'без отмен' },
     { label: 'Выдано', value: String(stats.done), hint: 'заказов' },
     { label: 'Избранное', value: String(stats.favorites), hint: pluralRu(stats.favorites, 'товар', 'товара', 'товаров') },
   ];
@@ -125,6 +124,25 @@ function ProfileTabs({ tab, onChange, ordersCount, favoritesCount }) {
         {favoritesCount > 0 && <span className="profile-tab-badge">{favoritesCount}</span>}
       </button>
     </div>
+  );
+}
+
+function ProfileLoungeCard() {
+  return (
+    <section className="profile-lounge-card card">
+      <div className="profile-lounge-copy">
+        <div className="profile-lounge-kicker">
+          <Icon name="sparkles" size="xs" />
+          2D лаунж
+        </div>
+        <div className="profile-lounge-title">King Lounge</div>
+        <p>Заходи в общую комнату, ходи джойстиком, общайся и пускай облака.</p>
+      </div>
+      <Link to="/lounge" className="profile-lounge-button">
+        Зайти
+        <span aria-hidden="true">→</span>
+      </Link>
+    </section>
   );
 }
 
@@ -371,12 +389,9 @@ export default function Profile() {
   }, [ids]);
 
   const stats = useMemo(() => {
-    const activeOrders = orders.filter((o) => o.status !== 'cancelled');
-    const spent = activeOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
     const done = orders.filter((o) => o.status === 'done').length;
     return {
       orders: orders.length,
-      spent,
       done,
       favorites: products.length,
     };
@@ -399,6 +414,7 @@ export default function Profile() {
     <div className="page profile-page">
       <ProfileHero user={user} />
       <ProfileStats stats={stats} />
+      <ProfileLoungeCard />
 
       <ProfileTabs
         tab={tab}

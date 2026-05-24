@@ -4,6 +4,7 @@ import cors from 'cors';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { initDb, all, get, run, dialect, slugify, withTransaction } from './db.js';
 import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
@@ -14,6 +15,7 @@ import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 import { adviseProducts } from './aiAdvisor.js';
 import { fetchExternalImage, parseAllowedImageUrl } from './mediaProxy.js';
 import { isCloudinaryEnabled, uploadImageBuffer } from './imageStorage.js';
+import { initGameLounge } from './gameLounge.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -25,20 +27,27 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+/**
+ * Единый allow-list для REST и Socket.IO.
+ * @returns {string[]}
+ */
+function allowedOrigins() {
+  return [
+    FRONTEND_URL,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'https://telegram-yanotrum-client.onrender.com',
+    'https://vape-shop-frontend.onrender.com',
+    process.env.ADMIN_URL,
+  ].filter(Boolean);
+}
+
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    const allow = new Set([
-      FRONTEND_URL,
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:5174',
-      'https://telegram-yanotrum-client.onrender.com',
-      'https://vape-shop-frontend.onrender.com',
-    ]);
-    if (process.env.ADMIN_URL) allow.add(process.env.ADMIN_URL);
-    return cb(null, allow.has(origin));
+    return cb(null, allowedOrigins().includes(origin));
   }
 }));
 app.use(express.json());
@@ -1259,7 +1268,9 @@ app.use((err, _req, res, _next) => {
 async function main() {
   await initDb();
   initBot(app, process.env.BOT_TOKEN, OWNER_CHAT_ID, FRONTEND_URL);
-  app.listen(PORT, () => {
+  const httpServer = createServer(app);
+  initGameLounge(httpServer, { allowedOrigins: allowedOrigins() });
+  httpServer.listen(PORT, () => {
     console.log(`🚀 Backend: http://localhost:${PORT}`);
     console.log(`👑 Owner ID: ${OWNER_CHAT_ID}`);
     console.log(`🗄  DB dialect: ${dialect}`);
