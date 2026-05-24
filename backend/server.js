@@ -629,9 +629,9 @@ app.get('/api/catalog/brand-groups', async (req, res, next) => {
       data = data.map((g) => ({
         ...g,
         image_url:
-          bySlug.get(g.slug)
+          (g.brand ? byProductBrand.get(g.brand.toLowerCase()) : null)
+          || bySlug.get(g.slug)
           || (g.brand ? byName.get(g.brand.toLowerCase()) : null)
-          || (g.brand ? byProductBrand.get(g.brand.toLowerCase()) : null)
           || null,
       }));
     }
