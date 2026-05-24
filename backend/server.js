@@ -13,6 +13,7 @@ import { reserveStock } from './stock.js';
 import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 import { adviseProducts } from './aiAdvisor.js';
 import { fetchExternalImage, parseAllowedImageUrl } from './mediaProxy.js';
+import { isCloudinaryEnabled, uploadImageBuffer } from './imageStorage.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -120,6 +121,12 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 
+/** Загрузка в память → Cloudinary или fallback на диск. */
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
 /** Импорт каталога из Excel: только в память, до 25 МБ. */
 const uploadImport = multer({
   storage: multer.memoryStorage(),
@@ -183,11 +190,31 @@ function productSearchWhere() {
   return '(name LIKE ? OR COALESCE(brand,\'\') LIKE ? OR COALESCE(description,\'\') LIKE ?)';
 }
 
-// Admin: upload
-app.post('/api/admin/upload', requireAdmin, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file' });
-  const url = `${publicBaseUrl(req)}/uploads/${req.file.filename}`;
-  res.json({ url, filename: req.file.filename, size: req.file.size });
+// Admin: upload (Cloudinary на проде, локальный uploads — для dev)
+app.post('/api/admin/upload', requireAdmin, uploadMemory.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer?.length) return res.status(400).json({ error: 'No file' });
+
+    if (isCloudinaryEnabled()) {
+      const url = await uploadImageBuffer(req.file.buffer, req.file.originalname || 'image');
+      return res.json({
+        url,
+        filename: req.file.originalname || 'image',
+        size: req.file.size,
+        storage: 'cloudinary',
+      });
+    }
+
+    const orig = req.file.originalname || 'file';
+    const ext = path.extname(orig).slice(0, 10) || '';
+    const safeExt = ext.toLowerCase().match(/^\.[a-z0-9]+$/) ? ext.toLowerCase() : '';
+    const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}${safeExt}`;
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
+    const url = `${publicBaseUrl(req)}/uploads/${filename}`;
+    res.json({ url, filename, size: req.file.size, storage: 'local' });
+  } catch (e) {
+    next(e);
+  }
 });
 
 /** Массовый импорт товаров из Excel/CSV (`importProducts.js`). */
@@ -882,6 +909,147 @@ app.get('/api/orders/user/:telegramId', async (req, res, next) => {
   try {
     const orders = await all('SELECT * FROM orders WHERE telegram_user_id=? ORDER BY created_at DESC', [req.params.telegramId]);
     res.json(orders.map(o => ({ ...o, items: JSON.parse(o.items) })));
+  } catch (e) { next(e); }
+});
+
+/** Повтор заказа: актуальные цены и остатки по позициям. */
+app.post('/api/orders/:id/repeat', async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const userId = String(req.body?.telegram_user_id ?? '').trim();
+    if (!userId || !Number.isFinite(orderId)) {
+      return res.status(400).json({ error: 'Missing telegram_user_id or order id' });
+    }
+
+    const block = await getBlockStatus(userId);
+    if (block.blocked) {
+      return res.status(403).json({ error: blockedUserMessage(block.reason), code: 'USER_BLOCKED' });
+    }
+
+    const order = await get(
+      'SELECT * FROM orders WHERE id=? AND telegram_user_id=?',
+      [orderId, userId],
+    );
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const rawItems = JSON.parse(order.items || '[]');
+    const items = [];
+    for (const line of rawItems) {
+      const pid = Number(line.product_id);
+      const qty = Math.max(1, Number(line.qty) || 1);
+      if (!Number.isFinite(pid)) continue;
+
+      const product = await get('SELECT * FROM products WHERE id=?', [pid]);
+      if (!product) {
+        items.push({
+          product_id: pid,
+          qty,
+          available: false,
+          reason: 'Товар больше не в каталоге',
+          name: line.name || line.product_name || `Товар #${pid}`,
+        });
+        continue;
+      }
+
+      const sq = product.stock_qty == null || product.stock_qty === undefined
+        ? -1
+        : Number(product.stock_qty);
+      const label = formatOrderLineName(product);
+      let available = true;
+      let reason = null;
+      let finalQty = qty;
+
+      if (sq === -1) {
+        if (!product.in_stock) {
+          available = false;
+          reason = 'Нет в наличии';
+        }
+      } else if (sq <= 0) {
+        available = false;
+        reason = 'Нет в наличии';
+      } else if (qty > sq) {
+        finalQty = sq;
+        reason = `Доступно только ${sq} шт.`;
+      }
+
+      items.push({
+        product_id: pid,
+        qty: finalQty,
+        available,
+        reason,
+        name: label,
+        brand: product.brand || null,
+        price: Number(product.price),
+        stock_qty: product.stock_qty,
+        image_url: product.image_url,
+      });
+    }
+
+    const availableItems = items.filter((i) => i.available);
+    res.json({
+      order_id: orderId,
+      items,
+      available_count: availableItems.length,
+      skipped_count: items.length - availableItems.length,
+    });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/favorites/user/:telegramId', async (req, res, next) => {
+  try {
+    const userId = String(req.params.telegramId || '').trim();
+    if (!userId) return res.status(400).json({ error: 'Missing user id' });
+
+    const rows = await all(
+      `SELECT p.* FROM favorites f
+       JOIN products p ON p.id = f.product_id
+       WHERE f.telegram_user_id = ?
+       ORDER BY f.created_at DESC`,
+      [userId],
+    );
+    const avail = productAvailableSQL('p');
+    const available = await all(
+      `SELECT p.* FROM favorites f
+       JOIN products p ON p.id = f.product_id
+       WHERE f.telegram_user_id = ? AND ${avail}
+       ORDER BY f.created_at DESC`,
+      [userId],
+    );
+
+    res.json({
+      product_ids: rows.map((r) => Number(r.id)),
+      products: withNormalizedImagesList(available, req),
+      total: rows.length,
+    });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/favorites/toggle', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.telegram_user_id ?? '').trim();
+    const productId = Number(req.body?.product_id);
+    if (!userId || !Number.isFinite(productId)) {
+      return res.status(400).json({ error: 'Missing telegram_user_id or product_id' });
+    }
+
+    const product = await get('SELECT id FROM products WHERE id=?', [productId]);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const existing = await get(
+      'SELECT id FROM favorites WHERE telegram_user_id=? AND product_id=?',
+      [userId, productId],
+    );
+
+    if (existing) {
+      await run('DELETE FROM favorites WHERE telegram_user_id=? AND product_id=?', [userId, productId]);
+      return res.json({ favorited: false, product_id: productId });
+    }
+
+    await run(
+      'INSERT INTO favorites (telegram_user_id, product_id) VALUES (?,?)',
+      [userId, productId],
+    );
+    res.json({ favorited: true, product_id: productId });
   } catch (e) { next(e); }
 });
 

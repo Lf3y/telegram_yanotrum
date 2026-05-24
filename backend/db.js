@@ -141,6 +141,14 @@ CREATE TABLE IF NOT EXISTS blocked_users (
   blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   blocked_by TEXT
 );
+
+CREATE TABLE IF NOT EXISTS favorites (
+  id SERIAL PRIMARY KEY,
+  telegram_user_id TEXT NOT NULL,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(telegram_user_id, product_id)
+);
 `;
 
 function pgPoolConfig() {
@@ -333,6 +341,16 @@ async function initSqlite() {
         reason TEXT,
         blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         blocked_by TEXT
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_user_id TEXT NOT NULL,
+        product_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(telegram_user_id, product_id)
       );
     `);
 

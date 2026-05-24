@@ -5,6 +5,7 @@ import { pluralRu } from '../lib/pluralRu';
 import { apiFetch, resolveImageUrl } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { Icon, CategoryIcon, ProductImage } from '../components/icons';
+import { FavoriteButton } from '../components/FavoriteButton';
 
 /**
  * @typedef {'categories'|'brands'|'products'|'search'} CatalogView
@@ -200,7 +201,8 @@ function ProductCard({ product }) {
 
   return (
     <div className="card catalog-card-shell catalog-product-card">
-      <div className="catalog-product-media">
+      <div className="catalog-product-media catalog-product-media--fav">
+        <FavoriteButton productId={id} className="favorite-btn--overlay" />
         <ProductImage
           src={resolveImageUrl(product.image_url)}
           alt={String(product.name || '')}

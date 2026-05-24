@@ -682,16 +682,113 @@ img { display: block; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 0 14px;
-  font-size: 11px;
+  gap: 2px;
+  padding: 8px 2px 10px;
+  font-size: 9px;
   color: var(--text3);
   transition: color 0.2s;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  min-width: 0;
 }
 .bottom-nav a.active { color: var(--accent2); }
-.bottom-nav a svg { width: 22px; height: 22px; }
+.bottom-nav a svg { width: 20px; height: 20px; }
+
+.favorite-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(10, 10, 11, 0.55);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.favorite-btn--on {
+  color: var(--accent2);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.15);
+}
+
+.favorite-btn--overlay {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+}
+
+.catalog-product-media--fav,
+.favorite-card-media {
+  position: relative;
+}
+
+.favorite-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.favorite-card-actions .btn {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.order-repeat-btn {
+  margin-top: 12px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 14px;
+}
+
+.home-buy-again {
+  margin: 0 16px 16px;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.home-buy-again-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--accent2);
+}
+
+.home-buy-again-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.home-buy-again-sub {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.home-buy-again-list {
+  list-style: none;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.home-buy-again-btn {
+  width: 100%;
+}
 
 /* Cart badge */
 .cart-badge {

@@ -1,6 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useTelegram } from '../hooks/useTelegram';
+import { useCart } from '../store/cart';
+import { apiFetch } from '../lib/api';
+import { formatByn } from '../lib/money';
 import { Icon } from '../components/icons';
+import { repeatOrderToCart } from '../lib/repeatOrder';
 
 const STEPS = [
   {
@@ -25,6 +30,37 @@ const STEPS = [
 
 export default function Home() {
   const { user } = useTelegram();
+  const { dispatch } = useCart();
+  const navigate = useNavigate();
+  const [lastOrder, setLastOrder] = useState(null);
+  const [repeating, setRepeating] = useState(false);
+
+  useEffect(() => {
+    apiFetch(`/api/orders/user/${user.id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setLastOrder(list[0] || null);
+      })
+      .catch(() => setLastOrder(null));
+  }, [user.id]);
+
+  async function repeatLast() {
+    if (!lastOrder?.id) return;
+    setRepeating(true);
+    try {
+      const { added, skipped } = await repeatOrderToCart(lastOrder.id, user.id, dispatch);
+      if (added === 0) {
+        alert('Товары из прошлого заказа сейчас недоступны');
+        return;
+      }
+      if (skipped > 0) alert('Часть позиций недоступна — в корзину добавлено то, что есть');
+      navigate('/cart');
+    } catch (e) {
+      alert(e?.message || 'Не удалось повторить заказ');
+    }
+    setRepeating(false);
+  }
 
   return (
     <div className="page home-page">
@@ -49,6 +85,33 @@ export default function Home() {
           </p>
         </div>
       </section>
+
+      {lastOrder && (
+        <section className="home-buy-again card">
+          <div className="home-buy-again-head">
+            <Icon name="repeat" size="sm" />
+            <div>
+              <div className="home-buy-again-title">Купить снова</div>
+              <div className="home-buy-again-sub">
+                Заказ #{lastOrder.id} · {formatByn(lastOrder.total)}
+              </div>
+            </div>
+          </div>
+          <ul className="home-buy-again-list">
+            {(lastOrder.items || []).slice(0, 3).map((item, i) => (
+              <li key={i}>{item.name || item.product_name} × {item.qty}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn btn-primary home-buy-again-btn"
+            disabled={repeating}
+            onClick={repeatLast}
+          >
+            {repeating ? 'Добавляем…' : 'Повторить в корзину'}
+          </button>
+        </section>
+      )}
 
       <section className="home-flow home-flow--landing">
         <div className="home-flow-head">
@@ -83,6 +146,10 @@ export default function Home() {
             <span className="home-cta-glow" aria-hidden="true" />
             <span className="home-cta-label">Открыть каталог</span>
             <span className="home-cta-arrow" aria-hidden="true">→</span>
+          </Link>
+          <Link to="/favorites" className="home-cta home-cta--secondary">
+            <Icon name="heart-filled" size="sm" />
+            <span className="home-cta-label">Избранное</span>
           </Link>
           <Link to="/assistant" className="home-cta home-cta--secondary">
             <Icon name="sparkles" size="sm" />

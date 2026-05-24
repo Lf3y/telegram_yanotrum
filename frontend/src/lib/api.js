@@ -59,6 +59,9 @@ export function resolveImageUrl(url) {
         const isOwnApi = base.includes(host);
         const isUploadPath = u.pathname.startsWith('/uploads/');
         if (!isOwnApi && !isUploadPath) {
+          if (host.includes('cloudinary.com') || host.includes('res.cloudinary.com')) {
+            return s;
+          }
           return `${base}/api/media?url=${encodeURIComponent(s)}`;
         }
       } catch {

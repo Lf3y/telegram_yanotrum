@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTelegram } from '../hooks/useTelegram';
+import { useCart } from '../store/cart';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { pluralRu } from '../lib/pluralRu';
 import { Icon } from '../components/icons';
+import { repeatOrderToCart } from '../lib/repeatOrder';
 
 const STATUS_LABELS = {
   new: { label: 'Новый', color: 'var(--accent2)', bg: 'rgba(var(--accent-rgb), 0.14)' },
@@ -20,10 +23,13 @@ function formatDate(str) {
 
 export default function Orders() {
   const { user } = useTelegram();
+  const { dispatch } = useCart();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [repeatingId, setRepeatingId] = useState(null);
 
   /**
    * Подпись позиции в заказе: новые заказы уже с «бренд · вкус» в `name`;
@@ -53,6 +59,24 @@ export default function Orders() {
         setLoading(false);
       });
   }, [user.id]);
+
+  async function handleRepeat(orderId) {
+    setRepeatingId(orderId);
+    try {
+      const { added, skipped, partial } = await repeatOrderToCart(orderId, user.id, dispatch);
+      if (added === 0) {
+        alert(skipped > 0 ? 'Ни один товар из заказа сейчас недоступен' : 'Не удалось повторить заказ');
+        return;
+      }
+      if (partial || skipped > 0) {
+        alert(`Добавлено ${added} поз. Некоторые товары недоступны или с меньшим остатком.`);
+      }
+      navigate('/cart');
+    } catch (e) {
+      alert(e?.message || 'Ошибка при повторе заказа');
+    }
+    setRepeatingId(null);
+  }
 
   if (loading) return <div className="page"><div className="spinner" /></div>;
 
@@ -148,6 +172,16 @@ export default function Orders() {
                           <div style={{ fontSize: 14, color: 'var(--text)' }}>{order.owner_note}</div>
                         </div>
                       )}
+
+                      <button
+                        type="button"
+                        className="btn btn-primary order-repeat-btn"
+                        disabled={repeatingId === order.id}
+                        onClick={() => handleRepeat(order.id)}
+                      >
+                        <Icon name="repeat" size="xs" />
+                        {repeatingId === order.id ? 'Добавляем…' : 'Повторить заказ'}
+                      </button>
                     </div>
                   </div>
                 )}

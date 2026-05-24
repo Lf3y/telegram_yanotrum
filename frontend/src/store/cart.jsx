@@ -65,6 +65,42 @@ function cartReducer(state, action) {
     }
     case 'CLEAR':
       return [];
+    case 'ADD_MANY': {
+      let next = [...state];
+      for (const raw of action.items || []) {
+        const cap = maxQtyForStock(raw.stock_qty);
+        const pid = Number(raw.product_id);
+        const wantQty = Math.max(1, Number(raw.qty) || 1);
+        const existing = next.find((i) => i.product_id === pid);
+        const mergedQty = (existing?.qty || 0) + wantQty;
+        const finalQty = Math.min(mergedQty, cap);
+
+        if (finalQty <= 0) continue;
+
+        if (existing) {
+          next = next.map((i) => (i.product_id === pid
+            ? {
+              ...i,
+              qty: finalQty,
+              price: Number.isFinite(Number(raw.price)) ? Number(raw.price) : i.price,
+              stock_qty: raw.stock_qty ?? i.stock_qty,
+              name: raw.name || i.name,
+              brand: raw.brand ?? i.brand,
+            }
+            : i));
+        } else {
+          next.push({
+            product_id: pid,
+            name: String(raw.name || ''),
+            brand: raw.brand != null ? String(raw.brand) : '',
+            price: Number(raw.price),
+            stock_qty: raw.stock_qty,
+            qty: finalQty,
+          });
+        }
+      }
+      return next;
+    }
     default:
       return state;
   }
