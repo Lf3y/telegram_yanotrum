@@ -210,12 +210,9 @@ function ProductCard({ product }) {
       <div className="catalog-product-head">
         <div className="catalog-product-brand">{product.brand || '·'}</div>
         <div className="catalog-product-title">{product.name}</div>
-        {product.description && (
-          <div className="catalog-product-desc">{product.description}</div>
-        )}
       </div>
 
-      {(product.volume || product.nicotine) && (
+      {(product.volume || product.nicotine) ? (
         <div className="catalog-product-badges">
           {product.volume && (
             <span className="badge badge-accent catalog-product-badge">{product.volume}</span>
@@ -224,6 +221,8 @@ function ProductCard({ product }) {
             <span className="badge catalog-product-badge catalog-product-badge--muted">{product.nicotine}</span>
           )}
         </div>
+      ) : (
+        <div className="catalog-product-badges catalog-product-badges--empty" aria-hidden="true" />
       )}
 
       <div className="catalog-product-footer">
@@ -317,18 +316,6 @@ function BrandCard({ brandLabel, count, imageUrl, onPick }) {
       onClick={(e) => {
         e.preventDefault();
         onPick();
-      }}
-      style={{
-        padding: 0,
-        width: '100%',
-        background: 'var(--bg3)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        cursor: 'pointer',
-        touchAction: 'manipulation',
-        textAlign: 'left',
-        WebkitTapHighlightColor: 'transparent',
-        overflow: 'hidden',
       }}
     >
       <div className="catalog-brand-media">
