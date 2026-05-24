@@ -190,11 +190,13 @@ async function initPostgres() {
   `).catch(() => {});
   await pool.query(`
     INSERT INTO categories (name, slug, emoji, description, sort_order, image_url)
-    INSERT INTO categories (name, slug, emoji, description, sort_order, image_url)
     SELECT 'Картриджи', 'cartridges', '💨',
            'Раздел как у жидкостей: сначала бренд или навигация по каталогу категории.', 100, NULL
     WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'cartridges')
   `);
+  await pool.query(`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_qty INTEGER DEFAULT -1
+  `).catch(() => {});
   await syncPgBrandsFromProductNames();
   console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
 }
