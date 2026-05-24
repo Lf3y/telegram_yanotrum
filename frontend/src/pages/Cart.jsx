@@ -38,7 +38,7 @@ export default function Cart() {
       if (data.success) {
         dispatch({ type: 'CLEAR' });
         setSuccess(true);
-        setTimeout(() => navigate('/orders'), 2000);
+        setTimeout(() => navigate('/profile?tab=orders'), 2000);
       }
     } catch (e) {
       if (e?.code === 'USER_BLOCKED') {

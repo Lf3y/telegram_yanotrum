@@ -144,9 +144,9 @@ export default function Home() {
             <span className="home-cta-label">Открыть каталог</span>
             <span className="home-cta-arrow" aria-hidden="true">→</span>
           </Link>
-          <Link to="/favorites" className="home-cta home-cta--secondary">
+          <Link to="/profile?tab=favorites" className="home-cta home-cta--secondary">
             <Icon name="heart-filled" size="sm" />
-            <span className="home-cta-label">Избранное</span>
+            <span className="home-cta-label">Профиль</span>
           </Link>
         </div>
       </section>

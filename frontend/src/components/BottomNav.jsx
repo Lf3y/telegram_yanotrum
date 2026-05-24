@@ -4,9 +4,8 @@ import { useCart } from '../store/cart';
 const NAV = [
   { to: '/', match: (p) => p === '/', label: 'Главная', icon: 'home' },
   { to: '/catalog', match: (p) => p.startsWith('/catalog'), label: 'Каталог', icon: 'grid' },
-  { to: '/favorites', match: (p) => p === '/favorites', label: 'Избр.', icon: 'heart' },
   { to: '/cart', match: (p) => p === '/cart', label: 'Корзина', icon: 'cart' },
-  { to: '/orders', match: (p) => p === '/orders', label: 'Заказы', icon: 'orders' },
+  { to: '/profile', match: (p) => p === '/profile' || p === '/orders' || p === '/favorites', label: 'Профиль', icon: 'profile' },
 ];
 
 function NavIcon({ name }) {
@@ -48,6 +47,13 @@ function NavIcon({ name }) {
           <circle cx="9" cy="21" r="1" />
           <circle cx="20" cy="21" r="1" />
           <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+        </svg>
+      );
+    case 'profile':
+      return (
+        <svg {...common}>
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
         </svg>
       );
     case 'orders':
