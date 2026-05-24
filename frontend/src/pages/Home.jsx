@@ -80,9 +80,6 @@ export default function Home() {
             <span className="home-title-line">VAPE</span>
             <span className="home-title-accent">SHOP</span>
           </h1>
-          <p className="home-lead">
-            Свежий каталог, честные цены в BYN и быстрая связь через Telegram.
-          </p>
         </div>
       </section>
 

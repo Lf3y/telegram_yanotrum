@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useCallback, useState } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { CartProvider } from './store/cart';
 import { FavoritesProvider } from './hooks/useFavorites';
-import BottomNav from './components/BottomNav';
+import AppLayout from './components/AppLayout';
+import { SplashScreen, shouldShowIntroSplash } from './components/SplashScreen';
 import Home from './pages/Home';
 import Catalog from './pages/Catalog';
 import Cart from './pages/Cart';
@@ -10,18 +12,27 @@ import Assistant from './pages/Assistant';
 import Favorites from './pages/Favorites';
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(shouldShowIntroSplash);
+
+  const finishSplash = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
   return (
     <CartProvider>
       <FavoritesProvider>
+        {showSplash && <SplashScreen onFinish={finishSplash} />}
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            <Route path="/" element={<><Home /><BottomNav /></>} />
-            <Route path="/catalog" element={<><Catalog /><BottomNav /></>} />
-            <Route path="/catalog/:slug" element={<><Catalog /><BottomNav /></>} />
-            <Route path="/favorites" element={<><Favorites /><BottomNav /></>} />
-            <Route path="/cart" element={<><Cart /><BottomNav /></>} />
-            <Route path="/orders" element={<><Orders /><BottomNav /></>} />
-            <Route path="/assistant" element={<><Assistant /><BottomNav /></>} />
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/catalog" element={<Catalog />} />
+              <Route path="/catalog/:slug" element={<Catalog />} />
+              <Route path="/favorites" element={<Favorites />} />
+              <Route path="/cart" element={<Cart />} />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/assistant" element={<Assistant />} />
+            </Route>
           </Routes>
         </BrowserRouter>
       </FavoritesProvider>
