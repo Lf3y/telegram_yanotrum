@@ -2296,7 +2296,6 @@ img { display: block; }
 
 .lounge-jukebox-backdrop {
   position: fixed;
-  inset: 0;
   z-index: 40;
   display: flex;
   align-items: flex-end;
@@ -2305,6 +2304,20 @@ img { display: block; }
   background: rgba(8, 6, 16, 0.72);
   overflow: hidden;
   overscroll-behavior: contain;
+}
+
+.lounge-jukebox-backdrop--keyboard {
+  align-items: stretch;
+  padding: 8px 12px calc(8px + var(--safe-bottom, 0px));
+}
+
+.lounge-jukebox-backdrop--keyboard .lounge-jukebox {
+  max-height: 100%;
+  margin-top: auto;
+}
+
+.lounge-jukebox-backdrop--keyboard .lounge-jukebox-now {
+  display: none;
 }
 
 .lounge-jukebox {

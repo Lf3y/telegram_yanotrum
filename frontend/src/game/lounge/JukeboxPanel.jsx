@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../lib/api';
+import { useVisualViewportInset } from '../../hooks/useVisualViewportInset';
 
 /**
  * @typedef {Object} JukeboxTrack
@@ -47,19 +48,29 @@ export function JukeboxPanel({
   const [loading, setLoading] = useState(false);
   const [queueingId, setQueueingId] = useState('');
   const [error, setError] = useState('');
+  const searchInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+  const viewport = useVisualViewportInset(open);
+  const keyboardOpen = viewport.keyboardInset > 64;
 
   useEffect(() => {
     if (!open) return undefined;
 
-    const { overflow, touchAction } = document.body.style;
+    const { overflow } = document.body.style;
     document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
 
     return () => {
       document.body.style.overflow = overflow;
-      document.body.style.touchAction = touchAction;
     };
   }, [open]);
+
+  /**
+   * Поднимает поле поиска над экранной клавиатурой на мобильных.
+   */
+  function handleSearchFocus() {
+    window.setTimeout(() => {
+      searchInputRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }, 120);
+  }
 
   if (!open) return null;
 
@@ -118,10 +129,16 @@ export function JukeboxPanel({
 
   return (
     <div
-      className="lounge-jukebox-backdrop"
+      className={`lounge-jukebox-backdrop${keyboardOpen ? ' lounge-jukebox-backdrop--keyboard' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label="Музыкальная коробка"
+      style={{
+        top: viewport.offsetTop,
+        left: viewport.offsetLeft,
+        width: viewport.width,
+        height: viewport.height,
+      }}
       onTouchMove={(event) => event.stopPropagation()}
     >
       <div
@@ -147,10 +164,14 @@ export function JukeboxPanel({
 
         <form className="lounge-jukebox-search" onSubmit={handleSearch}>
           <input
+            ref={searchInputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onFocus={handleSearchFocus}
             placeholder="Найти трек в SoundCloud..."
             maxLength={80}
+            enterKeyHint="search"
+            autoComplete="off"
           />
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Ищем…' : 'Найти'}
