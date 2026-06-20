@@ -45,6 +45,9 @@ export async function uploadImageBuffer(buffer, originalName = 'image') {
         public_id: `${base}-${Date.now()}`,
         resource_type: 'image',
         overwrite: false,
+        // Сжимаем уже на входе: ограничиваем ширину и автоподбираем качество,
+        // чтобы не хранить гигантские оригиналы.
+        transformation: [{ width: 1600, crop: 'limit', quality: 'auto:good' }],
       },
       (err, result) => {
         if (err) reject(err);

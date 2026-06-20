@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -54,6 +55,7 @@ function allowedOrigins() {
   ].filter(Boolean);
 }
 
+app.use(compression());
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
@@ -61,7 +63,10 @@ app.use(cors({
   }
 }));
 app.use(express.json());
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '7d',
+  immutable: true,
+}));
 
 /** Прокси внешних картинок для Mini App (VK и др.) */
 app.get('/api/media', async (req, res, next) => {
@@ -98,6 +103,26 @@ function publicBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+/**
+ * Внедряет авто-формат и авто-сжатие в URL доставки Cloudinary
+ * (`f_auto,q_auto,c_limit,w_1000`), чтобы картинки отдавались как
+ * оптимизированный WebP/AVIF с ограничением ширины — даже для уже
+ * сохранённых товаров, без перезаливки. Не-Cloudinary и уже
+ * трансформированные ссылки не трогает.
+ * @param {string} url
+ * @returns {string}
+ */
+function optimizeCloudinaryUrl(url) {
+  const marker = '/image/upload/';
+  if (!url.includes('res.cloudinary.com')) return url;
+  const at = url.indexOf(marker);
+  if (at === -1) return url;
+  const head = url.slice(0, at + marker.length);
+  const tail = url.slice(at + marker.length);
+  if (/^(f_|q_|c_|w_|h_|dpr_|e_|t_|ar_|g_|b_|l_)/.test(tail)) return url;
+  return `${head}f_auto,q_auto,c_limit,w_1000/${tail}`;
+}
+
 /** @param {string|null|undefined} url @param {import('express').Request} req */
 function normalizeImageUrl(url, req) {
   if (!url) return url;
@@ -105,9 +130,10 @@ function normalizeImageUrl(url, req) {
   if (!s) return null;
   const base = publicBaseUrl(req);
   if (/^https?:\/\//i.test(s)) {
-    return s
+    const abs = s
       .replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, base)
       .replace(/^http:\/\//i, 'https://');
+    return optimizeCloudinaryUrl(abs);
   }
   if (s.startsWith('/')) return `${base}${s}`;
   return s;

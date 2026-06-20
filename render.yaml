@@ -17,7 +17,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    branch: main
+    branch: master
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm start
@@ -57,7 +57,7 @@ services:
     name: vape-shop-frontend
     runtime: static
     plan: free
-    branch: main
+    branch: master
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
@@ -77,7 +77,7 @@ services:
     name: vape-shop-admin
     runtime: static
     plan: free
-    branch: main
+    branch: master
     rootDir: admin
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
