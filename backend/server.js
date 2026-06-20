@@ -49,6 +49,9 @@ function allowedOrigins() {
     'http://127.0.0.1:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5174',
+    // Electron desktop admin (фиксированный локальный порт встроенного сервера)
+    'http://127.0.0.1:41789',
+    'http://localhost:41789',
     'https://telegram-yanotrum-client.onrender.com',
     'https://vape-shop-frontend.onrender.com',
     process.env.ADMIN_URL,
@@ -1148,7 +1151,73 @@ app.get('/api/admin/analytics/summary', requireAdmin, async (req, res, next) => 
        WHERE in_stock=1 AND stock_qty > 0 AND stock_qty <= 5
        ORDER BY stock_qty ASC LIMIT 30`
     );
-    res.json({ overview, series, lowStock, days });
+
+    const statusRows = await all(
+      'SELECT status, COUNT(*) AS cnt, COALESCE(SUM(total),0) AS sum FROM orders GROUP BY status'
+    );
+    const statusCounts = statusRows.map((r) => ({
+      status: r.status,
+      count: Number(r.cnt) || 0,
+      sum: Number(r.sum) || 0,
+    }));
+
+    const productAgg = await get(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN in_stock=1 THEN 1 ELSE 0 END) AS active,
+         SUM(CASE WHEN in_stock=1 AND stock_qty=0 THEN 1 ELSE 0 END) AS out_of_stock,
+         SUM(CASE WHEN in_stock=1 AND stock_qty>0 AND stock_qty<=5 THEN 1 ELSE 0 END) AS low_stock
+       FROM products`
+    );
+    const productStats = {
+      total: Number(productAgg?.total) || 0,
+      active: Number(productAgg?.active) || 0,
+      outOfStock: Number(productAgg?.out_of_stock) || 0,
+      lowStock: Number(productAgg?.low_stock) || 0,
+    };
+
+    const customersRow = await get('SELECT COUNT(DISTINCT telegram_user_id) AS cnt FROM orders');
+    const customers = Number(customersRow?.cnt) || 0;
+
+    const doneCount = statusCounts.find((s) => s.status === 'done')?.count || 0;
+    const revenueAll = Number(overview?.revenue_all) || 0;
+    const avgOrderValue = doneCount > 0 ? revenueAll / doneCount : 0;
+
+    // Топ товаров по проданному количеству (из выданных заказов)
+    const doneOrders = await all(
+      "SELECT items FROM orders WHERE status='done' ORDER BY created_at DESC LIMIT 2000"
+    );
+    const topMap = new Map();
+    for (const row of doneOrders) {
+      let items = [];
+      try { items = JSON.parse(row.items) || []; } catch { items = []; }
+      for (const it of items) {
+        const name = String(it?.name || it?.product_name || 'Товар').trim();
+        const key = it?.product_id != null ? `id:${it.product_id}` : `name:${name}`;
+        const qty = Number(it?.qty) || 0;
+        const revenue = (Number(it?.price) || 0) * qty;
+        const prev = topMap.get(key) || { name, qty: 0, revenue: 0 };
+        prev.qty += qty;
+        prev.revenue += revenue;
+        prev.name = name || prev.name;
+        topMap.set(key, prev);
+      }
+    }
+    const topProducts = [...topMap.values()]
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 8);
+
+    res.json({
+      overview,
+      series,
+      lowStock,
+      days,
+      statusCounts,
+      productStats,
+      customers,
+      avgOrderValue,
+      topProducts,
+    });
   } catch (e) { next(e); }
 });
 

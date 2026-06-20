@@ -353,6 +353,28 @@ button, input, textarea, select { font: inherit; }
 .list-panel { margin-top: 8px; }
 .list-panel .card h3 { margin-top: 0; }
 
+/* ───────── Stat rows (статусы / топ товаров) ───────── */
+.stat-rows { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+.stat-row { display: flex; flex-direction: column; gap: 6px; }
+.stat-row-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.stat-row-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; overflow: hidden; }
+.stat-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-row-val { color: var(--text2); font-size: 12px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.stat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.stat-rank {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 6px; font-size: 11px; font-weight: 800;
+  background: var(--bg3); color: var(--text2);
+}
+.stat-bar { height: 7px; border-radius: 99px; background: var(--bg3); overflow: hidden; }
+.stat-bar-fill {
+  height: 100%; border-radius: 99px; min-width: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.4s ease;
+}
+
+.row-extra td { background: var(--bg1); padding: 16px 12px; }
+
 /* login */
 .login-outer { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .login-box { max-width: 400px; width: 100%; }

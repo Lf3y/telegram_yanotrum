@@ -1,0 +1,38 @@
+{
+  "name": "vape-shop-admin-desktop",
+  "version": "1.0.0",
+  "description": "Десктопная оболочка админ-панели Vape Shop (Electron)",
+  "author": "Vape Shop",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build-admin": "npm --prefix ../admin run build",
+    "copy-admin": "node scripts/copy-admin.mjs",
+    "prestart": "npm run build-admin && npm run copy-admin",
+    "start": "electron .",
+    "dist": "npm run build-admin && npm run copy-admin && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.vapeshop.admin",
+    "productName": "VapeShop Admin",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "app/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "VapeShopAdmin-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3"
+  }
+}
