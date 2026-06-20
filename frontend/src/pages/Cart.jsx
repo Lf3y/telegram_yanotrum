@@ -7,6 +7,7 @@ import { formatByn } from '../lib/money';
 import { Icon } from '../components/icons';
 import { hapticImpact, hapticNotify, hapticSelection } from '../lib/haptics';
 import { burstSmoke, flyToCart } from '../lib/fx';
+import { playAdd, playSuccess, playTap } from '../lib/sound';
 
 /** Праздничный залп дыма по центру экрана (для успешного заказа). */
 function celebrateOrder() {
@@ -14,6 +15,7 @@ function celebrateOrder() {
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight / 2;
   hapticNotify('success');
+  playSuccess();
   burstSmoke(cx, cy, 2.2);
   window.setTimeout(() => burstSmoke(cx - 70, cy - 30, 1.4), 140);
   window.setTimeout(() => burstSmoke(cx + 70, cy - 10, 1.4), 260);
@@ -129,7 +131,7 @@ export default function Cart() {
 
             {/* Qty controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <button type="button" onClick={() => { dispatch({ type: 'DEC', product_id: item.product_id }); hapticSelection(); }}
+              <button type="button" onClick={() => { dispatch({ type: 'DEC', product_id: item.product_id }); hapticSelection(); playTap(); }}
                 className="touch-target-min"
                 style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--bg4)', color: 'var(--text)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation', border: '1px solid var(--border)', flexShrink: 0 }}>
                 −
@@ -145,6 +147,7 @@ export default function Cart() {
                 onClick={(ev) => {
                   dispatch({ type: 'ADD', item });
                   hapticImpact('light');
+                  playAdd();
                   flyToCart(ev.currentTarget);
                 }}
                 className="touch-target-min"

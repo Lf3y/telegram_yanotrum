@@ -10,6 +10,8 @@ import { Icon, ProductImage } from '../components/icons';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { repeatOrderToCart } from '../lib/repeatOrder';
 import { useLoungeWallet } from '../game/lounge/useLoungeWallet';
+import { isSoundEnabled, setSoundEnabled } from '../lib/sound';
+import { hapticSelection } from '../lib/haptics';
 
 /** @typedef {'orders' | 'favorites'} ProfileTab */
 
@@ -149,6 +151,40 @@ function ProfileLoungeCard() {
         Зайти
         <span aria-hidden="true">→</span>
       </Link>
+    </section>
+  );
+}
+
+/** Карточка настроек профиля (звук интерфейса). */
+function ProfileSettingsCard() {
+  const [sound, setSound] = useState(isSoundEnabled);
+
+  const toggle = () => {
+    const next = !sound;
+    setSound(next);
+    setSoundEnabled(next);
+    hapticSelection();
+  };
+
+  return (
+    <section className="profile-settings card">
+      <button
+        type="button"
+        className="profile-setting-row"
+        onClick={toggle}
+        aria-pressed={sound}
+      >
+        <span className="profile-setting-info">
+          <Icon name="sparkles" size="sm" />
+          <span>
+            <span className="profile-setting-title">Звуки интерфейса</span>
+            <span className="profile-setting-sub">{sound ? 'Включены' : 'Выключены'}</span>
+          </span>
+        </span>
+        <span className={`profile-switch${sound ? ' is-on' : ''}`} aria-hidden="true">
+          <span className="profile-switch-knob" />
+        </span>
+      </button>
     </section>
   );
 }
@@ -422,6 +458,7 @@ export default function Profile() {
       <ProfileHero user={user} />
       <ProfileStats stats={stats} />
       <ProfileLoungeCard />
+      <ProfileSettingsCard />
 
       <ProfileTabs
         tab={tab}

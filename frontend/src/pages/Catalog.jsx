@@ -9,6 +9,7 @@ import { FavoriteButton } from '../components/FavoriteButton';
 import { useTilt } from '../hooks/useTilt';
 import { hapticImpact, hapticSelection } from '../lib/haptics';
 import { flyToCart } from '../lib/fx';
+import { playAdd, playTap } from '../lib/sound';
 
 /**
  * @typedef {'categories'|'brands'|'products'|'search'} CatalogView
@@ -256,12 +257,14 @@ function ProductCard({ product }) {
           onInc={(ev) => {
             dispatch({ type: 'ADD', item: payload() });
             hapticImpact('light');
+            playAdd();
             flyToCart(ev?.currentTarget);
           }}
           onDec={() => {
             if (qty > 0) {
               dispatch({ type: 'DEC', product_id: id });
               hapticSelection();
+              playTap();
             }
           }}
         />

@@ -6,6 +6,7 @@ import { useCart } from '../store/cart';
 import { Icon, ProductImage } from '../components/icons';
 import { hapticImpact } from '../lib/haptics';
 import { flyToCart } from '../lib/fx';
+import { playAdd } from '../lib/sound';
 
 const QUICK_PROMPTS = [
   'Сладкий фруктовый вкус с лёгким холодком',
@@ -64,6 +65,7 @@ export default function Assistant() {
       },
     });
     hapticImpact('light');
+    playAdd();
     flyToCart(ev?.currentTarget);
   }
 

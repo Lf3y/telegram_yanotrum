@@ -1,5 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useCart } from '../store/cart';
+import { hapticSelection } from '../lib/haptics';
+import { playTap } from '../lib/sound';
 
 const NAV = [
   { to: '/', match: (p) => p === '/', label: 'Главная', icon: 'home' },
@@ -96,6 +98,12 @@ export default function BottomNav() {
             key={item.to}
             to={item.to}
             className={`bottom-nav-link${active ? ' active' : ''}`}
+            onClick={() => {
+              if (!active) {
+                hapticSelection();
+                playTap();
+              }
+            }}
           >
             <span
               className="bottom-nav-icon-wrap"
