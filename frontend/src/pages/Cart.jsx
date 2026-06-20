@@ -1,10 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, cartLineTitle } from '../store/cart';
 import { useTelegram } from '../hooks/useTelegram';
 import { apiFetch } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { Icon } from '../components/icons';
+import { hapticImpact, hapticNotify, hapticSelection } from '../lib/haptics';
+import { burstSmoke, flyToCart } from '../lib/fx';
+
+/** Праздничный залп дыма по центру экрана (для успешного заказа). */
+function celebrateOrder() {
+  if (typeof window === 'undefined') return;
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  hapticNotify('success');
+  burstSmoke(cx, cy, 2.2);
+  window.setTimeout(() => burstSmoke(cx - 70, cy - 30, 1.4), 140);
+  window.setTimeout(() => burstSmoke(cx + 70, cy - 10, 1.4), 260);
+}
 
 export default function Cart() {
   const { cart, dispatch } = useCart();
@@ -16,8 +29,13 @@ export default function Cart() {
 
   const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
+  useEffect(() => {
+    if (success) celebrateOrder();
+  }, [success]);
+
   async function placeOrder() {
     if (!cart.length) return;
+    hapticImpact('medium');
     setLoading(true);
     try {
       const res = await apiFetch('/api/orders', {
@@ -111,7 +129,7 @@ export default function Cart() {
 
             {/* Qty controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <button type="button" onClick={() => dispatch({ type: 'DEC', product_id: item.product_id })}
+              <button type="button" onClick={() => { dispatch({ type: 'DEC', product_id: item.product_id }); hapticSelection(); }}
                 className="touch-target-min"
                 style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--bg4)', color: 'var(--text)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation', border: '1px solid var(--border)', flexShrink: 0 }}>
                 −
@@ -124,11 +142,11 @@ export default function Cart() {
                   if (cap < 0 || !Number.isFinite(cap)) return false;
                   return item.qty >= cap;
                 })()}
-                onClick={() =>
-                  dispatch({
-                    type: 'ADD',
-                    item,
-                  })}
+                onClick={(ev) => {
+                  dispatch({ type: 'ADD', item });
+                  hapticImpact('light');
+                  flyToCart(ev.currentTarget);
+                }}
                 className="touch-target-min"
                 style={{
                   width: 44,

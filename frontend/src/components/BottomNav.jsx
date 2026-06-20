@@ -97,7 +97,10 @@ export default function BottomNav() {
             to={item.to}
             className={`bottom-nav-link${active ? ' active' : ''}`}
           >
-            <span className="bottom-nav-icon-wrap">
+            <span
+              className="bottom-nav-icon-wrap"
+              id={item.icon === 'cart' ? 'cart-fly-anchor' : undefined}
+            >
               {item.icon === 'cart' && totalQty > 0 && (
                 <span className="cart-badge">{totalQty}</span>
               )}

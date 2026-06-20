@@ -4,6 +4,8 @@ import { apiFetch, resolveImageUrl } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { useCart } from '../store/cart';
 import { Icon, ProductImage } from '../components/icons';
+import { hapticImpact } from '../lib/haptics';
+import { flyToCart } from '../lib/fx';
 
 const QUICK_PROMPTS = [
   'Сладкий фруктовый вкус с лёгким холодком',
@@ -50,7 +52,7 @@ export default function Assistant() {
     setLoading(false);
   }
 
-  function addToCart(product) {
+  function addToCart(product, ev) {
     dispatch({
       type: 'ADD',
       item: {
@@ -61,6 +63,8 @@ export default function Assistant() {
         stock_qty: product.stock_qty,
       },
     });
+    hapticImpact('light');
+    flyToCart(ev?.currentTarget);
   }
 
   return (
@@ -139,7 +143,7 @@ export default function Assistant() {
                   <div className="assistant-result-footer">
                     <span className="assistant-result-price">{formatByn(p.price)}</span>
                     <div className="assistant-result-actions">
-                      <button type="button" className="btn btn-ghost" onClick={() => addToCart(p)}>
+                      <button type="button" className="btn btn-ghost" onClick={(ev) => addToCart(p, ev)}>
                         В корзину
                       </button>
                       <button type="button" className="btn btn-primary" onClick={() => navigate('/cart')}>

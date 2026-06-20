@@ -6,6 +6,9 @@ import { apiFetch, resolveImageUrl } from '../lib/api';
 import { formatByn } from '../lib/money';
 import { Icon, CategoryIcon, ProductImage } from '../components/icons';
 import { FavoriteButton } from '../components/FavoriteButton';
+import { useTilt } from '../hooks/useTilt';
+import { hapticImpact, hapticSelection } from '../lib/haptics';
+import { flyToCart } from '../lib/fx';
 
 /**
  * @typedef {'categories'|'brands'|'products'|'search'} CatalogView
@@ -81,7 +84,7 @@ function brandGroupsUrl(categorySlug, filters = {}, searchQuery = '') {
  * @param {{
  *   product: Record<string, unknown>,
  *   qty: number,
- *   onInc: () => void,
+ *   onInc: (ev?: import('react').MouseEvent) => void,
  *   onDec: () => void,
  *   maxQty: number,
  * }} props
@@ -150,7 +153,7 @@ function ProductCardControls({ product, qty, onInc, onDec, maxQty }) {
         onClick={(ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          onInc();
+          onInc(ev);
         }}
         disabled={Boolean(disablePlus)}
         aria-disabled={disablePlus ? true : undefined}
@@ -183,6 +186,7 @@ function ProductCardControls({ product, qty, onInc, onDec, maxQty }) {
  */
 function ProductCard({ product }) {
   const { dispatch, cart } = useCart();
+  const tiltRef = useTilt({ max: 7 });
 
   const id = Number(product.id);
   const qty = cart.find((c) => c.product_id === id)?.qty || 0;
@@ -204,7 +208,7 @@ function ProductCard({ product }) {
   });
 
   return (
-    <div className="card catalog-card-shell catalog-product-card">
+    <div ref={tiltRef} className="card catalog-card-shell catalog-product-card">
       <div className="catalog-product-media catalog-product-media--fav">
         <FavoriteButton productId={id} className="favorite-btn--overlay" />
         <ProductImage
@@ -249,8 +253,17 @@ function ProductCard({ product }) {
           product={product}
           qty={qty}
           maxQty={maxQ}
-          onInc={() => dispatch({ type: 'ADD', item: payload() })}
-          onDec={() => qty > 0 && dispatch({ type: 'DEC', product_id: id })}
+          onInc={(ev) => {
+            dispatch({ type: 'ADD', item: payload() });
+            hapticImpact('light');
+            flyToCart(ev?.currentTarget);
+          }}
+          onDec={() => {
+            if (qty > 0) {
+              dispatch({ type: 'DEC', product_id: id });
+              hapticSelection();
+            }
+          }}
         />
       </div>
     </div>
@@ -369,6 +382,25 @@ function CatalogSearchBar({ value, onChange, placeholder = 'Поиск по на
           <Icon name="close" size="xs" />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Скелетон-заглушка сетки на время загрузки.
+ * @param {{ count?: number, list?: boolean }} props
+ */
+function SkeletonGrid({ count = 6, list = false }) {
+  return (
+    <div className={`skeleton-grid${list ? ' skeleton-grid--list' : ''}`} aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="skeleton-card">
+          <div className="skeleton-line skeleton-line--media" />
+          <div className="skeleton-line skeleton-line--title" />
+          <div className="skeleton-line skeleton-line--text" />
+          <div className="skeleton-line skeleton-line--pill" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -736,7 +768,7 @@ export default function Catalog() {
         {view === 'categories' && debouncedSearch.length < 2 && (
           <>
             {categories.length === 0 ? (
-              <div className="spinner" />
+              <SkeletonGrid count={6} />
             ) : (
               <div className="catalog-category-grid">
                 {categories.map((cat, i) => (
@@ -755,7 +787,7 @@ export default function Catalog() {
         {view === 'brands' && (
           <>
             {groupsLoading ? (
-              <div className="spinner" />
+              <SkeletonGrid count={6} />
             ) : brandGroups.length === 0 ? (
               <div className="empty" style={{ padding: '36px 0' }}>
                 <div className="empty-icon"><Icon name="tag" size="xl" /></div>
@@ -794,7 +826,7 @@ export default function Catalog() {
         {(view === 'products' || view === 'search') && (
           <>
             {loading ? (
-              <div className="spinner" />
+              <SkeletonGrid count={6} />
             ) : view === 'search' && debouncedSearch.length < 2 ? (
               <div className="empty" style={{ padding: '32px 0' }}>
                 <div className="empty-icon"><Icon name="search" size="xl" /></div>

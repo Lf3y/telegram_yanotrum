@@ -758,7 +758,22 @@ img { display: block; }
   min-height: var(--viewport-stable-height, 100vh);
 }
 
+/* Атмосферный фоновый дым (canvas). Позади контента, не ловит события. */
+.ambient-smoke {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+  mix-blend-mode: screen;
+  will-change: opacity;
+}
+
 .page-stage {
+  position: relative;
+  z-index: 1;
   animation: pageEnter 0.42s var(--ease-out-expo) both;
   will-change: transform, opacity, filter;
 }
@@ -2484,4 +2499,145 @@ img { display: block; }
   font-weight: 800;
   color: var(--accent2);
   white-space: nowrap;
+}
+
+/* ═══════════ UI FX (дым, fly-to-cart, sheen, скелетоны) ═══════════ */
+
+/* Слой эффекта «полёт в корзину»: поверх контента, не ловит события. */
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.fx-flyer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff 0%, var(--accent3) 40%, var(--accent) 100%);
+  box-shadow: 0 0 14px var(--accent-glow), 0 0 26px rgba(var(--accent-rgb), 0.45);
+  will-change: transform, opacity;
+}
+
+/* Пульс иконки корзины при «прилёте» товара. */
+@keyframes cartPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.32); }
+  60% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+.bottom-nav-icon-wrap.cart-pulse {
+  animation: cartPulse 0.5s var(--ease-spring);
+}
+
+.bottom-nav-icon-wrap.cart-pulse .cart-badge {
+  animation: cartPulse 0.5s var(--ease-spring);
+}
+
+/* Неоновый блик (sheen), пробегающий по главной кнопке. */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  animation: btnSheen 4.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes btnSheen {
+  0% { transform: translateX(-130%); }
+  55%, 100% { transform: translateX(130%); }
+}
+
+/* Параллакс-тилт карточек товара (на десктопе). */
+.catalog-product-card {
+  transition: transform 0.18s var(--ease-out-expo), box-shadow 0.2s ease;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Скелетоны загрузки. */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.skeleton-grid--list {
+  grid-template-columns: 1fr;
+}
+
+.skeleton-card {
+  border-radius: var(--radius);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 12px;
+  overflow: hidden;
+}
+
+.skeleton-line {
+  position: relative;
+  border-radius: 8px;
+  background: var(--bg4);
+  overflow: hidden;
+}
+
+.skeleton-line--media {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.skeleton-line--title { height: 14px; width: 80%; margin-bottom: 8px; }
+.skeleton-line--text { height: 11px; width: 55%; margin-bottom: 14px; }
+.skeleton-line--pill { height: 32px; width: 100%; border-radius: 10px; }
+
+.skeleton-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary::after,
+  .fx-flyer,
+  .skeleton-line::after,
+  .bottom-nav-icon-wrap.cart-pulse,
+  .bottom-nav-icon-wrap.cart-pulse .cart-badge {
+    animation: none !important;
+  }
+  .catalog-product-card { transition: none !important; }
 }
