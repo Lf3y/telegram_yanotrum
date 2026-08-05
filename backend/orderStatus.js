@@ -33,17 +33,30 @@ export async function transitionOrderStatus(orderId, nextStatus) {
 
   const stockReserved = Number(cur.stock_reserved) === 1;
 
-  if (next === 'cancelled' && prev !== 'cancelled' && stockReserved) {
-    await restoreStock({ get, run }, items);
-    await run('UPDATE orders SET stock_reserved=0 WHERE id=?', [id]);
+  if (next === 'cancelled' && prev !== 'cancelled') {
+    if (stockReserved) {
+      await restoreStock({ get, run }, items);
+      await run('UPDATE orders SET stock_reserved=0 WHERE id=?', [id]);
+    }
+    // Возвращаем применённый купон клиенту
+    const { restoreCouponUsesForOrder } = await import('./coupons.js');
+    await restoreCouponUsesForOrder(id);
   }
 
   await run('UPDATE orders SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', [next, id]);
   const order = await get('SELECT * FROM orders WHERE id=?', [id]);
 
   if (next === 'done' && prev !== 'done') {
-    const { awardOrderCoins } = await import('./coins.js');
-    await awardOrderCoins(order);
+    // Реферальная система: засчитываем покупку и выдаём награды пригласившему
+    try {
+      const [{ onOrderDone }, { notifyUserText }] = await Promise.all([
+        import('./referrals.js'),
+        import('./bot.js'),
+      ]);
+      await onOrderDone(order, notifyUserText);
+    } catch (e) {
+      console.error('referral onOrderDone:', e?.message || e);
+    }
   }
 
   return { ok: true, order, prev, next, skipped: false };

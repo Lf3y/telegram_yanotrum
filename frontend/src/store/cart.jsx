@@ -1,6 +1,22 @@
-import { createContext, useContext, useReducer } from 'react';
+import { createContext, useContext, useEffect, useReducer } from 'react';
 
 const CartContext = createContext(null);
+
+const CART_STORAGE_KEY = 'vape-shop-cart-v1';
+
+/** Восстановление корзины после перезапуска Mini App / перезагрузки страницы. */
+function loadStoredCart() {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (i) => Number.isFinite(Number(i?.product_id)) && Number(i?.qty) > 0,
+    );
+  } catch {
+    return [];
+  }
+}
 
 /**
  * По данным SKU: лимит штук в корзине; `-1` / бесконечность — без лимита.
@@ -107,7 +123,16 @@ function cartReducer(state, action) {
 }
 
 export function CartProvider({ children }) {
-  const [cart, dispatch] = useReducer(cartReducer, []);
+  const [cart, dispatch] = useReducer(cartReducer, undefined, loadStoredCart);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch {
+      /* приватный режим / нет доступа к хранилищу — просто не сохраняем */
+    }
+  }, [cart]);
+
   return (
     <CartContext.Provider value={{ cart, dispatch }}>
       {children}

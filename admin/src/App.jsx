@@ -8,7 +8,7 @@ import OrdersPage from './pages/OrdersPage';
 import CatalogPage from './pages/CatalogPage';
 import ImportPage from './pages/ImportPage';
 import BlockedUsersPage from './pages/BlockedUsersPage';
-import CoinsPage from './pages/CoinsPage';
+import CouponsPage from './pages/CouponsPage';
 
 function Guard({ children }) {
   const { token } = loadAuth();
@@ -70,10 +70,10 @@ export default function App() {
           )}
         />
         <Route
-          path="/coins"
+          path="/coupons"
           element={(
             <Guard>
-              <CoinsPage />
+              <CouponsPage />
             </Guard>
           )}
         />

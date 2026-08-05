@@ -7,7 +7,7 @@ const NAV = [
   { to: '/', match: (p) => p === '/', label: 'Главная', icon: 'home' },
   { to: '/catalog', match: (p) => p.startsWith('/catalog'), label: 'Каталог', icon: 'grid' },
   { to: '/cart', match: (p) => p === '/cart', label: 'Корзина', icon: 'cart' },
-  { to: '/profile', match: (p) => p === '/profile' || p === '/orders' || p === '/favorites' || p === '/lounge', label: 'Профиль', icon: 'profile' },
+  { to: '/profile', match: (p) => p === '/profile' || p === '/orders' || p === '/favorites', label: 'Профиль', icon: 'profile' },
 ];
 
 function NavIcon({ name }) {

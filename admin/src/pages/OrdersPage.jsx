@@ -135,7 +135,19 @@ export default function OrdersPage() {
                         </div>
                       )}
                     </td>
-                    <td style={{ fontWeight: 800 }}>{formatByn(o.total)}</td>
+                    <td style={{ fontWeight: 800 }}>
+                      {formatByn(o.total)}
+                      {Number(o.discount_total) > 0 && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2, fontWeight: 600 }}>
+                          скидка −{formatByn(o.discount_total)}
+                        </div>
+                      )}
+                      {o.coupon_title && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2, fontWeight: 600 }}>
+                          🎟 {String(o.coupon_title)}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <select
                         className="select"

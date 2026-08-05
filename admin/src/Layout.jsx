@@ -25,7 +25,7 @@ const NAV_GROUPS = [
     label: 'Клиенты',
     items: [
       { to: '/users', label: 'Блокировки', icon: 'shield' },
-      { to: '/coins', label: 'Монетки', icon: 'coin' },
+      { to: '/coupons', label: 'Купоны', icon: 'coin' },
     ],
   },
 ];

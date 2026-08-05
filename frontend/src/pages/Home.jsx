@@ -83,6 +83,32 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="home-banner">
+        <div className="home-banner-blob home-banner-blob--1" aria-hidden="true" />
+        <div className="home-banner-blob home-banner-blob--2" aria-hidden="true" />
+        <div className="home-banner-inner">
+          <span className="home-banner-kicker">Витрина</span>
+          <h2 className="home-banner-title">Свежие вкусы уже в каталоге</h2>
+          <Link to="/catalog" className="home-banner-btn">
+            Смотреть
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
+      <section className="home-banner home-banner--referral">
+        <div className="home-banner-blob home-banner-blob--1" aria-hidden="true" />
+        <div className="home-banner-blob home-banner-blob--2" aria-hidden="true" />
+        <div className="home-banner-inner">
+          <span className="home-banner-kicker">Рефералка</span>
+          <h2 className="home-banner-title">Зови друзей — получай купоны и скидку до 5%</h2>
+          <Link to="/profile?tab=inventory" className="home-banner-btn">
+            Мой инвентарь
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
       {lastOrder && (
         <section className="home-buy-again card">
           <div className="home-buy-again-head">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTelegram } from '../hooks/useTelegram';
 import { useCart } from '../store/cart';
 import { useFavorites } from '../hooks/useFavorites';
@@ -9,11 +9,11 @@ import { pluralRu } from '../lib/pluralRu';
 import { Icon, ProductImage } from '../components/icons';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { repeatOrderToCart } from '../lib/repeatOrder';
-import { useLoungeWallet } from '../game/lounge/useLoungeWallet';
+import { CouponTicket } from '../components/CouponTicket';
 import { isSoundEnabled, setSoundEnabled } from '../lib/sound';
 import { hapticSelection } from '../lib/haptics';
 
-/** @typedef {'orders' | 'favorites'} ProfileTab */
+/** @typedef {'orders' | 'favorites' | 'inventory'} ProfileTab */
 
 const STATUS_LABELS = {
   new: { label: 'Новый', color: 'var(--accent2)', bg: 'rgba(var(--accent-rgb), 0.14)' },
@@ -44,9 +44,9 @@ function orderLineLabel(item) {
 }
 
 /**
- * @param {{ user: Record<string, unknown> }} props
+ * @param {{ user: Record<string, unknown>, levelName?: string, discountPercent?: number }} props
  */
-function ProfileHero({ user }) {
+function ProfileHero({ user, levelName, discountPercent }) {
   const firstName = String(user.first_name || '').trim();
   const lastName = String(user.last_name || '').trim();
   const username = user.username ? String(user.username).replace(/^@/, '') : '';
@@ -69,6 +69,13 @@ function ProfileHero({ user }) {
           <h1 className="profile-name">{displayName}</h1>
           {username && <div className="profile-username">@{username}</div>}
           <div className="profile-id">ID {String(user.id)}</div>
+          {levelName && (
+            <div className="profile-level-chip">
+              <Icon name="sparkles" size="xs" />
+              {levelName}
+              {discountPercent > 0 && <span> · −{discountPercent}%</span>}
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -99,59 +106,268 @@ function ProfileStats({ stats }) {
 }
 
 /**
- * @param {{ tab: ProfileTab, onChange: (tab: ProfileTab) => void, ordersCount: number, favoritesCount: number }} props
+ * Карточка реферальной программы: ссылка, уровень, прогресс, список друзей.
+ * @param {{ summary: Record<string, unknown> | null }} props
  */
-function ProfileTabs({ tab, onChange, ordersCount, favoritesCount }) {
+function ReferralCard({ summary }) {
+  const { tg } = useTelegram();
+  const [copied, setCopied] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
+
+  if (!summary) return null;
+
+  const link = summary.share_link ? String(summary.share_link) : '';
+  const qualified = Number(summary.qualified) || 0;
+  const invited = Number(summary.invited) || 0;
+  const next = summary.nextLevel;
+  const referrals = Array.isArray(summary.referrals) ? summary.referrals : [];
+
+  const progressPct = next
+    ? Math.min(100, Math.round((qualified / Number(next.need)) * 100))
+    : 100;
+
+  async function copyLink() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      hapticSelection();
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      prompt('Скопируйте ссылку:', link);
+    }
+  }
+
+  function shareLink() {
+    if (!link) return;
+    const text = 'Залетай в Vape Shop — жидкости, одноразки и снюс с доставкой. Открывай прямо в Telegram!';
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+    if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+    else window.open(shareUrl, '_blank');
+  }
+
   return (
-    <div className="profile-tabs" role="tablist">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={tab === 'orders'}
-        className={`profile-tab${tab === 'orders' ? ' profile-tab--active' : ''}`}
-        onClick={() => onChange('orders')}
-      >
-        <Icon name="clipboard" size="xs" />
-        Заказы
-        {ordersCount > 0 && <span className="profile-tab-badge">{ordersCount}</span>}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={tab === 'favorites'}
-        className={`profile-tab${tab === 'favorites' ? ' profile-tab--active' : ''}`}
-        onClick={() => onChange('favorites')}
-      >
-        <Icon name="heart-filled" size="xs" />
-        Избранное
-        {favoritesCount > 0 && <span className="profile-tab-badge">{favoritesCount}</span>}
-      </button>
+    <section className="referral-card card">
+      <div className="referral-glow" aria-hidden="true" />
+      <div className="referral-inner">
+        <div className="referral-kicker">
+          <Icon name="sparkles" size="xs" />
+          Реферальная программа
+        </div>
+        <h2 className="referral-title">Зови друзей — получай скидки</h2>
+        <p className="referral-sub">
+          Друг делает первую покупку → тебе купон −5% и прогресс уровня.
+          Уровень даёт постоянную скидку на все заказы, а за каждые 10 друзей — банка жижи в подарок.
+        </p>
+
+        <div className="referral-progress">
+          <div className="referral-progress-head">
+            <span>Уровень «{String(summary.levelName)}»{Number(summary.discountPercent) > 0 ? ` · скидка ${summary.discountPercent}%` : ''}</span>
+            {next && <span>{qualified}/{String(next.need)}</span>}
+          </div>
+          <div className="referral-progress-bar">
+            <div className="referral-progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          {next ? (
+            <div className="referral-progress-hint">
+              До «{String(next.name)}» (−{String(next.discount)}%) осталось {Number(next.need) - qualified}{' '}
+              {pluralRu(Number(next.need) - qualified, 'друг', 'друга', 'друзей')} с покупкой
+            </div>
+          ) : (
+            <div className="referral-progress-hint">
+              Максимальный уровень — вы легенда! 👑 До следующей банки жижи в подарок:{' '}
+              {Number(summary.nextGiftIn) || 10} {pluralRu(Number(summary.nextGiftIn) || 10, 'друг', 'друга', 'друзей')}
+            </div>
+          )}
+        </div>
+
+        {link ? (
+          <div className="referral-actions">
+            <button type="button" className="btn btn-primary referral-share-btn" onClick={shareLink}>
+              Пригласить друга
+            </button>
+            <button type="button" className="referral-copy-btn touch-target-min" onClick={copyLink}>
+              {copied ? '✓ Скопировано' : 'Скопировать ссылку'}
+            </button>
+          </div>
+        ) : (
+          <div className="referral-progress-hint">Ссылка-приглашение появится, когда бот будет запущен.</div>
+        )}
+
+        {invited > 0 && (
+          <button
+            type="button"
+            className="referral-friends-toggle touch-target-min"
+            onClick={() => setShowFriends((v) => !v)}
+          >
+            Мои друзья: {invited} ({qualified} с покупкой) {showFriends ? '▲' : '▼'}
+          </button>
+        )}
+
+        {showFriends && referrals.length > 0 && (
+          <div className="referral-friends">
+            {referrals.map((r, i) => (
+              <div key={i} className="referral-friend">
+                <span className="referral-friend-name">{String(r.name)}</span>
+                <span className={`referral-friend-status${r.qualified ? ' is-ok' : ''}`}>
+                  {r.qualified
+                    ? `${r.orders_count} ${pluralRu(Number(r.orders_count), 'покупка', 'покупки', 'покупок')}`
+                    : 'ещё без покупки'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Шторка «Как это работает» — правила инвентаря, купонов и уровней. */
+function InventoryInfoSheet({ open, onClose, levels }) {
+  if (!open) return null;
+
+  const lvls = Array.isArray(levels) && levels.length > 0
+    ? levels
+    : [
+      { level: 1, need: 1, discount: 1, name: 'Искра' },
+      { level: 2, need: 3, discount: 2, name: 'Дым' },
+      { level: 3, need: 5, discount: 3, name: 'Туман' },
+      { level: 4, need: 10, discount: 5, name: 'Легенда' },
+    ];
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <div className="sheet-title">Как это работает</div>
+          <button type="button" className="sheet-close touch-target-min" onClick={onClose} aria-label="Закрыть">✕</button>
+        </div>
+        <div className="sheet-body">
+          <div className="info-block">
+            <div className="info-block-title">🎟 Купоны</div>
+            <p>
+              Купоны лежат в инвентаре. При оформлении заказа в корзине нажмите
+              «Применить купон» и выберите нужный — скидка сразу отразится в итоге.
+              На один заказ можно применить один купон. Если заказ отменят, купон вернётся.
+            </p>
+          </div>
+          <div className="info-block">
+            <div className="info-block-title">🎁 Купон-подарок</div>
+            <p>
+              Купон «Банка жижи в подарок» не меняет сумму заказа — просто примените его,
+              и магазин положит подарок к вашему заказу при выдаче.
+            </p>
+          </div>
+          <div className="info-block">
+            <div className="info-block-title">🤝 Рефералы</div>
+            <p>
+              Отправьте другу свою ссылку из профиля. Когда друг сделает первую покупку
+              (заказ выдан) — вам придёт купон −5% и вырастет прогресс уровня.
+            </p>
+          </div>
+          <div className="info-block">
+            <div className="info-block-title">⬆️ Уровни и постоянная скидка</div>
+            <p>Уровень зависит от числа друзей с покупками и даёт скидку на все ваши заказы автоматически:</p>
+            <ul className="info-levels">
+              {lvls.filter((l) => Number(l.need) > 0).map((l) => (
+                <li key={String(l.level)}>
+                  <strong>{String(l.name)}</strong> — {String(l.need)}{' '}
+                  {pluralRu(Number(l.need), 'друг', 'друга', 'друзей')} → скидка {String(l.discount)}%
+                </li>
+              ))}
+            </ul>
+            <p>За каждые 10 друзей с покупками — <strong>банка жижи в подарок</strong>: и за 10, и за 20, и за 30, без ограничений.</p>
+          </div>
+          <div className="info-block">
+            <div className="info-block-title">⚡ Ивенты</div>
+            <p>
+              Иногда магазин раздаёт купоны всем клиентам на ограниченный срок —
+              следите за инвентарём, они появляются здесь сами.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function ProfileLoungeCard() {
-  const { user } = useTelegram();
-  const { balance, config } = useLoungeWallet(user.id);
+/**
+ * Вкладка «Инвентарь»: купоны + инфо.
+ * @param {{ coupons: Record<string, unknown>[], levels: unknown[] }} props
+ */
+function ProfileInventoryTab({ coupons, levels }) {
+  const [infoOpen, setInfoOpen] = useState(false);
+  const usable = coupons.filter((c) => c.usable);
+  const rest = coupons.filter((c) => !c.usable);
 
   return (
-    <section className="profile-lounge-card card">
-      <div className="profile-lounge-copy">
-        <div className="profile-lounge-kicker">
-          <Icon name="sparkles" size="xs" />
-          2D лаунж
+    <div className="inventory-tab">
+      <button type="button" className="inventory-info-btn touch-target-min" onClick={() => setInfoOpen(true)}>
+        <Icon name="chat" size="xs" />
+        Как использовать купоны и получать новые?
+      </button>
+
+      {coupons.length === 0 ? (
+        <div className="empty profile-empty">
+          <div className="empty-icon"><Icon name="sparkles" size="xl" /></div>
+          <div className="empty-title">Инвентарь пуст</div>
+          <p>Приглашайте друзей по ссылке выше — за каждую их первую покупку вы получите купон</p>
         </div>
-        <div className="profile-lounge-title">King Lounge</div>
-        <p>
-          Заходи в общую комнату, общайся, включай музыку в jukebox и трать монетки.
-          {' '}У тебя: <strong>{balance} 🪙</strong> · за заказ: +{config.coinsPerOrder}
-        </p>
-      </div>
-      <Link to="/lounge" className="profile-lounge-button">
-        Зайти
-        <span aria-hidden="true">→</span>
-      </Link>
-    </section>
+      ) : (
+        <>
+          {usable.length > 0 && (
+            <div className="inventory-list">
+              {usable.map((c) => (
+                <CouponTicket key={String(c.id)} coupon={c} />
+              ))}
+            </div>
+          )}
+          {rest.length > 0 && (
+            <>
+              <div className="inventory-section-label">Использованные и истёкшие</div>
+              <div className="inventory-list inventory-list--dim">
+                {rest.map((c) => (
+                  <CouponTicket key={String(c.id)} coupon={c} muted />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      <InventoryInfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} levels={levels} />
+    </div>
+  );
+}
+
+/**
+ * @param {{ tab: ProfileTab, onChange: (tab: ProfileTab) => void, ordersCount: number, favoritesCount: number, couponsCount: number }} props
+ */
+function ProfileTabs({ tab, onChange, ordersCount, favoritesCount, couponsCount }) {
+  const tabs = [
+    { id: 'orders', label: 'Заказы', icon: 'clipboard', badge: ordersCount },
+    { id: 'favorites', label: 'Избранное', icon: 'heart-filled', badge: favoritesCount },
+    { id: 'inventory', label: 'Инвентарь', icon: 'sparkles', badge: couponsCount },
+  ];
+
+  return (
+    <div className="profile-tabs profile-tabs--three" role="tablist">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          className={`profile-tab${tab === t.id ? ' profile-tab--active' : ''}`}
+          onClick={() => onChange(/** @type {ProfileTab} */ (t.id))}
+        >
+          <Icon name={t.icon} size="xs" />
+          {t.label}
+          {t.badge > 0 && <span className="profile-tab-badge">{t.badge}</span>}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -294,6 +510,7 @@ function ProfileOrdersTab({ orders, userId, dispatch, navigate }) {
         const isOpen = expanded === order.id;
         const items = Array.isArray(order.items) ? order.items : [];
         const itemCount = items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+        const discount = Number(order.discount_total) || 0;
 
         return (
           <article
@@ -334,6 +551,21 @@ function ProfileOrdersTab({ orders, userId, dispatch, navigate }) {
                     <span>{formatByn(Number(item.price) * Number(item.qty))}</span>
                   </div>
                 ))}
+
+                {discount > 0 && (
+                  <div className="profile-order-line profile-order-line--discount">
+                    <span>
+                      Скидка{order.coupon_title ? ` (${String(order.coupon_title)})` : ''}
+                    </span>
+                    <span>−{formatByn(discount)}</span>
+                  </div>
+                )}
+                {order.coupon_title && discount === 0 && (
+                  <div className="profile-order-line profile-order-line--discount">
+                    <span>🎁 {String(order.coupon_title)}</span>
+                    <span />
+                  </div>
+                )}
 
                 {order.customer_note && (
                   <div className="order-note">
@@ -402,10 +634,12 @@ export default function Profile() {
 
   const tabParam = searchParams.get('tab');
   /** @type {ProfileTab} */
-  const tab = tabParam === 'favorites' ? 'favorites' : 'orders';
+  const tab = tabParam === 'favorites' ? 'favorites' : tabParam === 'inventory' ? 'inventory' : 'orders';
 
   const [orders, setOrders] = useState(/** @type {Record<string, unknown>[]} */ ([]));
   const [products, setProducts] = useState(/** @type {Record<string, unknown>[]} */ ([]));
+  const [referrals, setReferrals] = useState(/** @type {Record<string, unknown> | null} */ (null));
+  const [coupons, setCoupons] = useState(/** @type {Record<string, unknown>[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -415,10 +649,14 @@ export default function Profile() {
     Promise.all([
       apiFetch(`/api/orders/user/${user.id}`).then((r) => r.json()),
       apiFetch(`/api/favorites/user/${user.id}`).then((r) => r.json()),
+      apiFetch(`/api/referrals/user/${user.id}`).then((r) => r.json()).catch(() => null),
+      apiFetch(`/api/coupons/user/${user.id}`).then((r) => r.json()).catch(() => null),
     ])
-      .then(([ordersData, favData]) => {
+      .then(([ordersData, favData, refData, couponData]) => {
         setOrders(Array.isArray(ordersData) ? ordersData : []);
         setProducts(Array.isArray(favData?.products) ? favData.products : []);
+        setReferrals(refData && typeof refData === 'object' ? refData : null);
+        setCoupons(Array.isArray(couponData?.coupons) ? couponData.coupons : []);
         setLoading(false);
       })
       .catch((e) => {
@@ -440,6 +678,8 @@ export default function Profile() {
     };
   }, [orders, products.length]);
 
+  const usableCoupons = useMemo(() => coupons.filter((c) => c.usable).length, [coupons]);
+
   /** @param {ProfileTab} nextTab */
   function setTab(nextTab) {
     setSearchParams(nextTab === 'orders' ? {} : { tab: nextTab }, { replace: true });
@@ -455,9 +695,13 @@ export default function Profile() {
 
   return (
     <div className="page profile-page">
-      <ProfileHero user={user} />
+      <ProfileHero
+        user={user}
+        levelName={referrals ? String(referrals.levelName) : null}
+        discountPercent={referrals ? Number(referrals.discountPercent) || 0 : 0}
+      />
       <ProfileStats stats={stats} />
-      <ProfileLoungeCard />
+      <ReferralCard summary={referrals} />
       <ProfileSettingsCard />
 
       <ProfileTabs
@@ -465,6 +709,7 @@ export default function Profile() {
         onChange={setTab}
         ordersCount={orders.length}
         favoritesCount={products.length}
+        couponsCount={usableCoupons}
       />
 
       {error && (
@@ -472,10 +717,12 @@ export default function Profile() {
       )}
 
       <div className="profile-tab-panel" role="tabpanel">
-        {tab === 'orders' ? (
+        {tab === 'orders' && (
           <ProfileOrdersTab orders={orders} userId={user.id} dispatch={dispatch} navigate={navigate} />
-        ) : (
-          <ProfileFavoritesTab products={products} />
+        )}
+        {tab === 'favorites' && <ProfileFavoritesTab products={products} />}
+        {tab === 'inventory' && (
+          <ProfileInventoryTab coupons={coupons} levels={referrals?.levels} />
         )}
       </div>
     </div>

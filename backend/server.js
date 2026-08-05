@@ -8,7 +8,7 @@ import path from 'path';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { initDb, all, get, run, dialect, slugify, withTransaction } from './db.js';
-import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus } from './bot.js';
+import { initBot, notifyOwner, notifyCustomer, notifyCustomerOrderStatus, getBotUsername } from './bot.js';
 import { transitionOrderStatus } from './orderStatus.js';
 import { runProductImport } from './importProducts.js';
 import { reserveStock } from './stock.js';
@@ -16,17 +16,18 @@ import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
 import { adviseProducts } from './aiAdvisor.js';
 import { fetchExternalImage, parseAllowedImageUrl } from './mediaProxy.js';
 import { isCloudinaryEnabled, uploadImageBuffer } from './imageStorage.js';
-import { initGameLounge } from './gameLounge.js';
+import { claimReferral, getReferralSummary, getLevelDiscountPercent } from './referrals.js';
 import {
-  COINS_PER_ORDER,
-  JUKEBOX_SONG_COST,
-  adjustWalletBalance,
-  getWallet,
-  listWallets,
-  setWalletBalance,
-  spendCoins,
-} from './coins.js';
-import { getJukeboxState, queueJukeboxTrack, searchSoundCloudTracks } from './loungeJukebox.js';
+  COUPON_TYPES,
+  adminDeleteCoupon,
+  adminListCoupons,
+  adminSetCouponActive,
+  couponDiscountAmount,
+  grantCoupon,
+  listUserCoupons,
+  markCouponUsed,
+  validateCouponForUser,
+} from './coupons.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -919,12 +920,27 @@ app.post('/api/ai/advise', async (req, res, next) => {
   }
 });
 
+/** Округление денег до копеек. */
+function roundMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 app.post('/api/orders', async (req, res, next) => {
   try {
-    const { telegram_user_id, telegram_username, telegram_first_name, items, customer_note } = req.body;
+    const { telegram_user_id, telegram_username, telegram_first_name, items, customer_note, coupon_id } = req.body;
     if (!telegram_user_id || !items?.length) return res.status(400).json({ error: 'Missing fields' });
 
     const userId = String(telegram_user_id);
+
+    // Без юзернейма продавец не сможет связаться с клиентом — заказ не принимаем
+    const username = String(telegram_username ?? '').replace(/^@/, '').trim();
+    if (!username) {
+      return res.status(400).json({
+        error: 'У вас не установлен юзернейм в Telegram — продавец не сможет с вами связаться. Добавьте юзернейм в настройках Telegram (Настройки → Имя пользователя) и попробуйте снова.',
+        code: 'NO_USERNAME',
+      });
+    }
+
     const block = await getBlockStatus(userId);
     if (block.blocked) {
       return res.status(403).json({
@@ -933,7 +949,7 @@ app.post('/api/orders', async (req, res, next) => {
       });
     }
 
-    let total = 0;
+    let subtotal = 0;
     const enriched = [];
     for (const item of items) {
       if (!item.product_id || !item.qty || item.qty < 1) {
@@ -950,7 +966,7 @@ app.post('/api/orders', async (req, res, next) => {
       } else if (!product.in_stock) {
         return res.status(400).json({ error: `Товар недоступен: ${lineLabel}` });
       }
-      total += product.price * item.qty;
+      subtotal += product.price * item.qty;
       enriched.push({
         ...item,
         name: lineLabel,
@@ -959,6 +975,23 @@ app.post('/api/orders', async (req, res, next) => {
         price: product.price,
       });
     }
+
+    // Скидки: постоянная скидка уровня рефералки + (опционально) один купон
+    subtotal = roundMoney(subtotal);
+    const levelPercent = await getLevelDiscountPercent(userId);
+    let coupon = null;
+    if (coupon_id != null && coupon_id !== '') {
+      const check = await validateCouponForUser(coupon_id, userId);
+      if (!check.ok) {
+        return res.status(400).json({ error: check.message, code: 'BAD_COUPON' });
+      }
+      coupon = check.coupon;
+    }
+
+    const levelDiscount = roundMoney(subtotal * levelPercent / 100);
+    const couponDiscount = coupon ? roundMoney(couponDiscountAmount(coupon, subtotal - levelDiscount)) : 0;
+    const discountTotal = roundMoney(Math.min(subtotal, levelDiscount + couponDiscount));
+    const total = roundMoney(Math.max(0, subtotal - discountTotal));
 
     const orderPayload = await withTransaction(async (db) => {
       const reserveItems = enriched.map((it) => ({
@@ -973,17 +1006,42 @@ app.post('/api/orders', async (req, res, next) => {
       }
 
       const result = await db.run(
-        'INSERT INTO orders (telegram_user_id,telegram_username,telegram_first_name,items,total,customer_note,stock_reserved) VALUES (?,?,?,?,?,?,1)',
-        [userId, telegram_username || null, telegram_first_name || null, JSON.stringify(enriched), total, customer_note || null],
+        `INSERT INTO orders
+           (telegram_user_id,telegram_username,telegram_first_name,items,total,customer_note,stock_reserved,
+            subtotal,discount_total,level_discount_percent,coupon_id,coupon_title)
+         VALUES (?,?,?,?,?,?,1,?,?,?,?,?)`,
+        [
+          userId,
+          telegram_username || null,
+          telegram_first_name || null,
+          JSON.stringify(enriched),
+          total,
+          customer_note || null,
+          subtotal,
+          discountTotal,
+          levelPercent,
+          coupon ? Number(coupon.id) : null,
+          coupon ? String(coupon.title) : null,
+        ],
       );
-      return { orderId: result.lastInsertRowid };
+      const orderId = result.lastInsertRowid;
+      if (coupon) {
+        await markCouponUsed(db, coupon.id, userId, orderId);
+      }
+      return { orderId };
     });
 
     const order = await get('SELECT * FROM orders WHERE id=?', [orderPayload.orderId]);
     notifyOwner(OWNER_CHAT_ID, order, enriched);
     notifyCustomer(userId, order.id);
 
-    res.json({ success: true, order_id: order.id, total });
+    res.json({
+      success: true,
+      order_id: order.id,
+      subtotal,
+      discount_total: discountTotal,
+      total,
+    });
   } catch (e) {
     if (e?.code === 'INSUFFICIENT_STOCK' || e?.code === 'UNAVAILABLE') {
       return res.status(400).json({ error: e.message, code: e.code });
@@ -1365,107 +1423,119 @@ app.delete('/api/admin/blocked-users/:telegramUserId', requireAdmin, async (req,
   } catch (e) { next(e); }
 });
 
-app.get('/api/lounge/config', (_req, res) => {
-  res.json({
-    coinsPerOrder: COINS_PER_ORDER,
-    jukeboxSongCost: JUKEBOX_SONG_COST,
-  });
-});
+// ——— Рефералы ———
 
-app.get('/api/lounge/wallet/:telegramUserId', async (req, res, next) => {
+/** Привязка по start_param Mini App (startapp=ref_<id>) или прямому referrer_id. */
+app.post('/api/referrals/claim', async (req, res, next) => {
   try {
-    const wallet = await getWallet(req.params.telegramUserId);
-    res.json(wallet);
+    const userId = String(req.body?.telegram_user_id ?? '').trim();
+    if (!userId) return res.status(400).json({ error: 'Missing telegram_user_id' });
+
+    let referrerId = String(req.body?.referrer_id ?? '').trim();
+    const startParam = String(req.body?.start_param ?? '').trim();
+    if (!referrerId && startParam) {
+      const m = startParam.match(/^ref_(\d+)$/);
+      if (m) referrerId = m[1];
+    }
+    if (!referrerId) return res.status(400).json({ error: 'Missing referrer' });
+
+    const result = await claimReferral(referrerId, userId);
+    res.json(result);
   } catch (e) { next(e); }
 });
 
-app.get('/api/lounge/jukebox/state', (_req, res) => {
-  res.json(getJukeboxState());
-});
-
-app.get('/api/lounge/jukebox/search', async (req, res, next) => {
+app.get('/api/referrals/user/:telegramId', async (req, res, next) => {
   try {
-    const tracks = await searchSoundCloudTracks(String(req.query.q || ''));
-    res.json({ tracks });
-  } catch (e) {
-    if (e?.code === 'SOUNDCLOUD_NOT_CONFIGURED') {
-      return res.status(503).json({ error: e.message, code: e.code });
-    }
-    next(e);
-  }
-});
-
-app.post('/api/lounge/jukebox/queue', async (req, res, next) => {
-  try {
-    const { telegram_user_id, track, player_name } = req.body || {};
-    const uid = String(telegram_user_id ?? '').trim();
-    if (!uid) return res.status(400).json({ error: 'Укажите telegram_user_id' });
-    if (!track?.permalink || !track?.id) {
-      return res.status(400).json({ error: 'Некорректный трек' });
-    }
-
-    const balance = await spendCoins(uid, JUKEBOX_SONG_COST, 'jukebox_queue', {
-      meta: { trackId: String(track.id), title: String(track.title || '') },
-    });
-
-    queueJukeboxTrack(
-      {
-        id: String(track.id),
-        title: String(track.title || 'Без названия'),
-        artist: String(track.artist || 'SoundCloud'),
-        permalink: String(track.permalink),
-        artworkUrl: String(track.artworkUrl || ''),
-        durationMs: Number(track.durationMs || 0),
-      },
-      { id: uid, name: String(player_name || 'Игрок') },
-    );
-
+    const uid = String(req.params.telegramId || '').trim();
+    if (!uid) return res.status(400).json({ error: 'Missing user id' });
+    const summary = await getReferralSummary(uid);
+    const botUsername = getBotUsername();
     res.json({
-      ok: true,
-      balance,
-      jukebox: getJukeboxState(),
+      ...summary,
+      share_link: botUsername ? `https://t.me/${botUsername}?start=ref_${uid}` : null,
     });
-  } catch (e) {
-    if (e?.code === 'INSUFFICIENT_COINS') {
-      return res.status(400).json({ error: e.message, code: e.code });
-    }
-    if (e?.code === 'SOUNDCLOUD_NOT_CONFIGURED') {
-      return res.status(503).json({ error: e.message, code: e.code });
-    }
-    next(e);
-  }
-});
-
-app.get('/api/admin/wallets', requireAdmin, async (req, res, next) => {
-  try {
-    const wallets = await listWallets(String(req.query.search || ''));
-    res.json(wallets);
   } catch (e) { next(e); }
 });
 
-app.get('/api/admin/wallets/:telegramUserId', requireAdmin, async (req, res, next) => {
+// ——— Купоны (инвентарь) ———
+
+app.get('/api/coupons/user/:telegramId', async (req, res, next) => {
   try {
-    const wallet = await getWallet(req.params.telegramUserId);
-    res.json(wallet);
+    const uid = String(req.params.telegramId || '').trim();
+    if (!uid) return res.status(400).json({ error: 'Missing user id' });
+    res.json({ coupons: await listUserCoupons(uid) });
   } catch (e) { next(e); }
 });
 
-app.post('/api/admin/wallets/:telegramUserId/adjust', requireAdmin, async (req, res, next) => {
+// ——— Админка: купоны и рефералы ———
+
+app.get('/api/admin/coupons', requireAdmin, async (_req, res, next) => {
   try {
-    const uid = String(req.params.telegramUserId ?? '').trim();
-    if (!uid) return res.status(400).json({ error: 'Некорректный id' });
+    res.json(await adminListCoupons());
+  } catch (e) { next(e); }
+});
 
-    const { balance, delta } = req.body || {};
-    let nextBalance;
-    if (balance != null) {
-      nextBalance = await setWalletBalance(uid, Number(balance), 'admin');
-    } else if (delta != null) {
-      nextBalance = await adjustWalletBalance(uid, Number(delta), 'admin');
-    } else {
-      return res.status(400).json({ error: 'Укажите balance или delta' });
+app.post('/api/admin/coupons', requireAdmin, async (req, res, next) => {
+  try {
+    const { user_id, type, value, title, description, uses_total, expires_at } = req.body || {};
+    if (!COUPON_TYPES.includes(String(type))) {
+      return res.status(400).json({ error: `Тип купона: ${COUPON_TYPES.join(' / ')}` });
     }
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: 'Укажите название купона' });
+    }
+    if (type !== 'free_item' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) {
+      return res.status(400).json({ error: 'Укажите положительное значение скидки' });
+    }
+    const coupon = await grantCoupon({
+      user_id: user_id != null && String(user_id).trim() !== '' ? String(user_id).trim() : null,
+      type: String(type),
+      value: Number(value) || 0,
+      title: String(title).trim(),
+      description: description != null && String(description).trim() !== '' ? String(description).trim() : null,
+      uses_total: Math.max(1, Number(uses_total) || 1),
+      expires_at: expires_at || null,
+      source: user_id ? 'admin' : 'event',
+    });
+    res.json(coupon);
+  } catch (e) { next(e); }
+});
 
-    res.json({ telegram_user_id: uid, balance: nextBalance });
+app.put('/api/admin/coupons/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const { active } = req.body || {};
+    if (active == null) return res.status(400).json({ error: 'Укажите active' });
+    res.json(await adminSetCouponActive(Number(req.params.id), Boolean(active)));
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/admin/coupons/:id', requireAdmin, async (req, res, next) => {
+  try {
+    await adminDeleteCoupon(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/referrals', requireAdmin, async (_req, res, next) => {
+  try {
+    const rows = await all(`
+      SELECT r.referrer_user_id,
+             COUNT(*) AS invited,
+             SUM(CASE WHEN r.qualified=1 THEN 1 ELSE 0 END) AS qualified,
+             SUM(COALESCE(r.orders_count,0)) AS referral_orders,
+             (SELECT MAX(o.telegram_first_name) FROM orders o WHERE o.telegram_user_id = r.referrer_user_id) AS referrer_name,
+             (SELECT MAX(o.telegram_username) FROM orders o WHERE o.telegram_user_id = r.referrer_user_id) AS referrer_username
+      FROM referrals r
+      GROUP BY r.referrer_user_id
+      ORDER BY qualified DESC, invited DESC
+      LIMIT 200
+    `);
+    res.json(rows.map((r) => ({
+      ...r,
+      invited: Number(r.invited) || 0,
+      qualified: Number(r.qualified) || 0,
+      referral_orders: Number(r.referral_orders) || 0,
+    })));
   } catch (e) { next(e); }
 });
 
@@ -1478,7 +1548,6 @@ async function main() {
   await initDb();
   initBot(app, process.env.BOT_TOKEN, OWNER_CHAT_ID, FRONTEND_URL);
   const httpServer = createServer(app);
-  initGameLounge(httpServer, { allowedOrigins: allowedOrigins() });
   httpServer.listen(PORT, () => {
     console.log(`🚀 Backend: http://localhost:${PORT}`);
     console.log(`👑 Owner ID: ${OWNER_CHAT_ID}`);

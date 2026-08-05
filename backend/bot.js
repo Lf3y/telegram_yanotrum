@@ -4,8 +4,15 @@ import { formatByn } from './formatMoney.js';
 import { get, run } from './db.js';
 import { transitionOrderStatus } from './orderStatus.js';
 import { blockedUserMessage, getBlockStatus } from './blockedUsers.js';
+import { claimReferral } from './referrals.js';
 
 let bot = null;
+let botUsername = '';
+
+/** Юзернейм бота (для реферальных ссылок t.me/<bot>?start=ref_...). */
+export function getBotUsername() {
+  return botUsername;
+}
 
 /** В группе с OWNER_CHAT_ID укажи OWNER_USER_ID (числовой user id того, кто жмёт кнопки). В личке с ботом не нужно. */
 function canOwnerActOnCallbackQuery(query, ownerChatIdExpected) {
@@ -48,8 +55,12 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
 
   bot = new TelegramBot(token, { polling: !useWebhook });
 
-  // /start command — send mini app button
-  bot.onText(/\/start/, async (msg) => {
+  bot.getMe()
+    .then((me) => { botUsername = me?.username || ''; })
+    .catch((e) => console.error('bot getMe:', e?.message || e));
+
+  // /start [ref_<id>] — привязка реферала + кнопка Mini App
+  bot.onText(/\/start(?:\s+(\S+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = String(msg.from?.id ?? chatId);
     try {
@@ -61,7 +72,22 @@ export function initBot(expressApp, token, ownerChatId, frontendUrl) {
     } catch (e) {
       console.error('/start block check:', e?.message || e);
     }
-    bot.sendMessage(chatId, '🛍 Добро пожаловать в Vape Shop!\n\nНажми кнопку ниже чтобы открыть магазин:', {
+
+    let refGreeting = '';
+    const payload = String(match?.[1] || '').trim();
+    const refMatch = payload.match(/^ref_(\d+)$/);
+    if (refMatch) {
+      try {
+        const res = await claimReferral(refMatch[1], userId);
+        if (res.ok) {
+          refGreeting = '\n\n🤝 Вы пришли по приглашению друга — оформите первый заказ, и он получит бонус!';
+        }
+      } catch (e) {
+        console.error('/start referral claim:', e?.message || e);
+      }
+    }
+
+    bot.sendMessage(chatId, `🛍 Добро пожаловать в Vape Shop!${refGreeting}\n\nНажми кнопку ниже чтобы открыть магазин:`, {
       reply_markup: {
         inline_keyboard: [[
           {
@@ -218,6 +244,25 @@ export function notifyOwner(ownerChatId, order, items) {
     .map(i => `  • ${i.name} × ${i.qty} = ${formatByn(i.price * i.qty)}`)
     .join('\n');
 
+  const subtotal = Number(order.subtotal);
+  const discountTotal = Number(order.discount_total) || 0;
+  const levelPercent = Number(order.level_discount_percent) || 0;
+  const hasDiscountBlock = discountTotal > 0 || order.coupon_title;
+
+  const discountLines = hasDiscountBlock
+    ? [
+      '',
+      'СКИДКИ:',
+      Number.isFinite(subtotal) && subtotal > 0 ? `  Подытог: ${formatByn(subtotal)}` : null,
+      levelPercent > 0 ? `  Уровень рефералки: −${levelPercent}%` : null,
+      order.coupon_title ? `  🎟 Купон: ${order.coupon_title}` : null,
+      discountTotal > 0 ? `  Скидка всего: −${formatByn(discountTotal)}` : null,
+      String(order.coupon_title || '').toLowerCase().includes('подарок')
+        ? '  🎁 НЕ ЗАБУДЬТЕ ПОЛОЖИТЬ ПОДАРОК К ЗАКАЗУ!'
+        : null,
+    ]
+    : [];
+
   const lines = [
     `🛒 Новый заказ #${order.id}`,
     '',
@@ -229,6 +274,7 @@ export function notifyOwner(ownerChatId, order, items) {
     '',
     'ТОВАРЫ:',
     itemsList || '  —',
+    ...discountLines,
     '',
     `💰 Итого: ${formatByn(order.total)}`,
     order.customer_note ? `📝 Комментарий клиента: ${order.customer_note}` : null,
@@ -246,6 +292,12 @@ export function notifyOwner(ownerChatId, order, items) {
       ]],
     },
   }).catch(e => console.error('notifyOwner:', e.message));
+}
+
+/** Произвольное сообщение пользователю (награды рефералки и т.п.). */
+export function notifyUserText(telegramUserId, text) {
+  if (!bot || !telegramUserId || !text) return;
+  bot.sendMessage(String(telegramUserId), String(text)).catch(e => console.error('notifyUserText:', e.message));
 }
 
 export function notifyCustomer(telegramUserId, orderId) {

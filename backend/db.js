@@ -36,7 +36,11 @@ function normalizePgRow(row) {
     const v = o[k];
     if (typeof v === 'bigint') o[k] = Number(v);
   }
-  const numKeys = ['id', 'category_id', 'brand_id', 'price', 'old_price', 'in_stock', 'sort_order', 'stock_qty', 'total'];
+  const numKeys = [
+    'id', 'category_id', 'brand_id', 'price', 'old_price', 'in_stock', 'sort_order', 'stock_qty', 'total',
+    'subtotal', 'discount_total', 'level_discount_percent', 'coupon_id', 'value', 'uses_total', 'active',
+    'qualified', 'orders_count',
+  ];
   for (const k of numKeys) {
     if (!(k in o) || o[k] === null || o[k] === undefined) continue;
     if (typeof o[k] === 'string' && o[k].trim() !== '') {
@@ -166,6 +170,37 @@ CREATE TABLE IF NOT EXISTS coin_transactions (
   meta TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS referrals (
+  referred_user_id TEXT PRIMARY KEY,
+  referrer_user_id TEXT NOT NULL,
+  qualified INTEGER DEFAULT 0,
+  orders_count INTEGER DEFAULT 0,
+  qualified_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT,
+  type TEXT NOT NULL,
+  value DOUBLE PRECISION DEFAULT 0,
+  title TEXT NOT NULL,
+  description TEXT,
+  uses_total INTEGER DEFAULT 1,
+  expires_at TIMESTAMP,
+  active INTEGER DEFAULT 1,
+  source TEXT DEFAULT 'admin',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS coupon_uses (
+  id SERIAL PRIMARY KEY,
+  coupon_id INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
+  order_id INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 function pgPoolConfig() {
@@ -236,6 +271,21 @@ async function initPostgres() {
   `).catch(() => {});
   await pool.query(`
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS coins_awarded INTEGER DEFAULT 0
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DOUBLE PRECISION
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_total DOUBLE PRECISION DEFAULT 0
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS level_discount_percent DOUBLE PRECISION DEFAULT 0
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id INTEGER
+  `).catch(() => {});
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_title TEXT
   `).catch(() => {});
   await syncPgBrandsFromProductNames();
   console.log('✅ PostgreSQL: схема готова (категории и товары только через админку)');
@@ -410,6 +460,59 @@ async function initSqlite() {
     if (!hasColumnSQLite('orders', 'coins_awarded')) {
       sqliteDb.run('ALTER TABLE orders ADD COLUMN coins_awarded INTEGER DEFAULT 0');
     }
+
+    if (!hasColumnSQLite('orders', 'subtotal')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN subtotal REAL');
+    }
+    if (!hasColumnSQLite('orders', 'discount_total')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN discount_total REAL DEFAULT 0');
+    }
+    if (!hasColumnSQLite('orders', 'level_discount_percent')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN level_discount_percent REAL DEFAULT 0');
+    }
+    if (!hasColumnSQLite('orders', 'coupon_id')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN coupon_id INTEGER');
+    }
+    if (!hasColumnSQLite('orders', 'coupon_title')) {
+      sqliteDb.run('ALTER TABLE orders ADD COLUMN coupon_title TEXT');
+    }
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS referrals (
+        referred_user_id TEXT PRIMARY KEY,
+        referrer_user_id TEXT NOT NULL,
+        qualified INTEGER DEFAULT 0,
+        orders_count INTEGER DEFAULT 0,
+        qualified_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS coupons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        type TEXT NOT NULL,
+        value REAL DEFAULT 0,
+        title TEXT NOT NULL,
+        description TEXT,
+        uses_total INTEGER DEFAULT 1,
+        expires_at DATETIME,
+        active INTEGER DEFAULT 1,
+        source TEXT DEFAULT 'admin',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    sqliteDb.run(`
+      CREATE TABLE IF NOT EXISTS coupon_uses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coupon_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        order_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
     sqliteDb.run(`
       INSERT OR IGNORE INTO categories (name, slug, emoji, description, sort_order)
